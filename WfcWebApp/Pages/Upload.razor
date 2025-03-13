@@ -1,0 +1,118 @@
+﻿@page "/upload"
+@inject IJSRuntime JS
+@using WfcWebApp.Wfc
+
+
+<script src="imageUtils.js"></script>
+
+<h3>Upload and Display an Image</h3>
+
+<InputFile OnChange="@OnFileChange" accept="image/*" />
+
+@if (hasInputImage) {
+    <ul>
+        <li>Name: @inputFilename</li>
+        <li>Dimensions (pixels): (@inputWidth, @inputHeight)</li>
+        <li>
+            Number of unique colors: @colorMapping.Count
+            @if (!colorMapping.IsValid()) {
+                <p>Too many! Maximum of 32</p>
+            }
+        </li>
+        <li>
+            <img src="@imageDataUrl" alt="Failed to display image." 
+            style="display: block; margin-top: 10px; width: @(inputWidth*3)px; height: @(inputHeight*3)px; image-rendering: pixelated;">
+        </li>
+    </ul>
+
+    @if (colorMapping.IsValid()) {
+        <p>
+            <label>
+                Output width:
+                <input type="number" @bind="outputWidth" />
+            </label>
+            <label>
+                Output height:
+                <input type="number" @bind="outputHeight" />
+            </label>
+        </p>
+        <p>
+            <label>
+                Wraparound mode:
+                <input type="checkbox" @bind="wraparoundMode" />
+            </label>
+        </p>
+
+        <p>
+            <button @onclick="OnGenerate">Generate</button>
+        </p>
+
+        <p>
+            <canvas id="outputCanvas" width="@outputWidth" height="@outputHeight"
+            style="border: 1px solid black; width: @(outputWidth*3)px; height: @(outputHeight*3)px; image-rendering: pixelated;
+            @(generateState > 0 ? "display: block;" : "display: none;")">
+            </canvas>
+        </p>
+
+        @if (generateState == 1) {
+            <p>
+                Generating with wave function collapse...
+            </p>
+        } else if (generateState == 2) {
+            <p>
+                Generation complete!
+            </p>
+        }
+    }
+}
+
+
+
+
+@code {
+    private string? imageDataUrl;
+    private WfcWave wfcWave = new();
+    private ColorMapping colorMapping = new();
+
+    private ImageDataRaw? displayCanvasData;
+    private bool hasInputImage = false;
+    private string? inputFilename;
+    private int inputWidth, inputHeight;
+
+    private bool wraparoundMode = false;
+    private int generateState = 0;
+
+    private async Task OnFileChange(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) {
+            return;
+        }
+        var buffer = new byte[file.Size];
+        await file.OpenReadStream().ReadAsync(buffer);
+
+        // Convert to Base64
+        imageDataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
+
+        ImageDataRaw imageData = await JS.InvokeAsync<ImageDataRaw>("getImagePixels", imageDataUrl);
+        colorMapping.FromImageData(imageData);
+        inputWidth = imageData.Width;
+        inputHeight = imageData.Height;
+        inputFilename = file.Name;
+        hasInputImage = true;
+        
+        
+    }
+
+    private int outputWidth = 32;
+    private int outputHeight = 32;
+
+    private async Task OnGenerate()
+    {
+        generateState = 1;
+        displayCanvasData = new ImageDataRaw(outputWidth, outputHeight);
+
+        await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
+    }
+
+}
