@@ -17,39 +17,52 @@ This ensures that the algorithm has time to "preload" some of the material at pe
 public class WfcGenerator
 {
 
-	private static Random random = new Random();
+	private static Random random;
 	public WfcPalette wfcPalette;
 	public WfcWave wfcWave;
 
 	public int convSize = 3;
-	public bool rotationsEnabled = false;
+	public bool rotationsEnabled = true;
 
 	public float smallRadius;
 	public float largeRadius;
 	private int preloadFrequency = 20; // Grid spacing for preloading WFC generation in larger radius
-	private int backpropHorizon = 50; // Max number of backprop iterations before moving on
-	private int backpropMaxDistance = 10;
+	private int backpropHorizon = 100; // Max number of backprop iterations before moving on
+	private int backpropMaxDistance = 20;
 	private float randomEpsilon = 0.05f; // Probability of collapsing a random tile instead of the one with the lowest entropy
 	
 
-
+	public void SetDependencies(WfcWave wave, WfcPalette palette, int randomSeed = 0) {
+		wfcWave = wave;
+		wfcPalette = palette;
+		random = new Random(randomSeed);
+		WfcWave.random = random; //set the wave's reference to the same random object for consistency
+	}
 	
 
 	HashSet<Vector2I> collapsedPositionTracker = new();
 	private void StartGenerate(IEnumerable<Vector2I> positionIterator) {
 		int c = 0;
-		int max_backprop_distance = 10;
 		Vector2I collapse_pos;
 		collapsedPositionTracker.Clear();
 		while (c++ < 1000) {
 			if (TrySelectNextCollapsePosition(out collapse_pos, positionIterator)) {
-				SingleGenerationCycleBounded(collapse_pos, max_backprop_distance);
+				SingleGenerationCycleBounded(collapse_pos);
 			} else {
 				break;
 			}
 		}
 
 		Console.WriteLine($"GenerateWithinArea took {c} iterations!");
+	}
+
+	public bool RunSingle(IEnumerable<Vector2I> positionIterator) {
+		if (TrySelectNextCollapsePosition(out Vector2I collapse_pos, positionIterator)) {
+			Console.WriteLine($"Selected position {collapse_pos} for collapse.");
+			SingleGenerationCycleBounded(collapse_pos);
+			return true;
+		}
+		return false;
 	}
 
 
@@ -77,7 +90,7 @@ public class WfcGenerator
 	// Collapses the wfcWave at the specified collapse position
 	// Performs up to backpropHorizon iterations of backprop around this position
 	// This backprop extends up to <radius> distance away
-	private void SingleGenerationCycleBounded(Vector2I collapse_pos, float radius) {
+	private void SingleGenerationCycleBounded(Vector2I collapse_pos, float radius=10) {
 		if (wfcWave.IsUncollapsed(collapse_pos)) { // this tile can still be collapsed
 			int collapse_mask = ChooseCollapseMask(collapse_pos, DoesWaveSliceFit);
 			
@@ -115,24 +128,25 @@ public class WfcGenerator
 		// we need to slide the window along the palette and track the positions where it fits
 
 		ReferenceView waveSlice = wfcWave.GetReferenceView(collapse_pos, convSize);
+		ReferenceView fullPalette = wfcPalette.GetReferenceView();
 		fitCounter.Clear(); //keep this as a persistent dict since this function will need to be reused rather a lot
 
 		Vector2I bounds = new Vector2I(wfcPalette.Width, wfcPalette.Height);
 		if (!wfcPalette.Wrap) {
 			bounds -= Vector2I.One*(convSize-1);
 		}
-		Vector2I offset = new();
+		Vector2I center = new();
 		int n_rotations = rotationsEnabled ? 4 : 1;
 		
 		for (int i = 0; i < n_rotations; i++) {
 			waveSlice.rotation = i;
 			for (int x = 0; x < bounds.X; x++) {
 				for (int y = 0; y < bounds.Y; y++) {
-					offset.X = x - (convSize-1)/2;
-					offset.Y = y - (convSize-1)/2;
-					int score = scoringFunction(waveSlice, wfcPalette.GetReferenceView(), offset);
+					center.X = x + (convSize-1)/2;
+					center.Y = y + (convSize-1)/2;
+					int score = scoringFunction(waveSlice, fullPalette, center);
 					if (score > 0) {
-						int mask = wfcPalette.GetBitmask(offset);
+						int mask = wfcPalette.GetBitmask(center);
 						fitCounter[mask] = fitCounter.TryGetValue(mask, out int value) ? value + score : score;
 					}
 				}
@@ -201,17 +215,18 @@ public class WfcGenerator
 		Vector2I pos = new();
 		for (int x = 0; x < waveSlice.size; x++) {
 			for (int y = 0; y < waveSlice.size; y++) {
-				pos.X = x - (convSize-1)/2;
-				pos.Y = y - (convSize-1)/2;
-				// waveSlice.GetMask() returns an indicator vector
+				pos.X = x;
+				pos.Y = y;
+				// the waveslice bitmask is an indicator vector
 				int mask = waveSlice.GetBitmask(pos);
 				if (mask == 0) {
 					// if the mask is 0 already, it's a contradiction in the wave
 					// for the purposes of backprop, this means it fits all (pretend its not real and let self-healing handle it)
 					continue;
 				}
-				// biomePalette.GetMask() returns a one-hot vector
-				mask &= paletteSlice.GetBitmask(pos + center);
+				// the paletteslice bitmask is a one-hot vector
+				Vector2I localCenter = Vector2I.One * ((convSize-1)/2);
+				mask &= paletteSlice.GetBitmask(pos + center - localCenter);
 				if (mask == 0) {
 					// If none of the active bits are shared between the wfcWave slice and biome palette masks,
 					// we know this slice of the palette won't fit into the wfcWave slice
@@ -241,7 +256,7 @@ public class WfcGenerator
 				backpropVisited.Add(backprop_pos);
 
 				// pull full palette through the window around our backprop position
-				//ReferenceView palette = wfcPalette.GetReferenceView();
+				ReferenceView fullPalette = wfcPalette.GetReferenceView();
 				ReferenceView backprop_window = wfcWave.GetReferenceView(backprop_pos, convSize);
 				BitmaskWindow new_window = new(convSize);
 
@@ -254,10 +269,10 @@ public class WfcGenerator
 					int inverse_rotation = (4-i)%4;
 					for (int x = 0; x < bounds; x++) {
 						for (int y = 0; y < bounds; y++) {
-							offset.X = x + (convSize-1)/2;
-							offset.Y = y + (convSize-1)/2;
-							
-							if (DoesWaveSliceFit(backprop_window, wfcPalette.GetReferenceView(), offset) == 1) {
+							offset.X = x;
+							offset.Y = y;
+							Vector2I localCenter = Vector2I.One * ((convSize-1)/2);
+							if (DoesWaveSliceFit(backprop_window, fullPalette, offset + localCenter) == 1) {
 								// construct combined but unweighted waveslice by OR-ing each convolution that fits
 								new_window.AppendOR(wfcPalette.GetReferenceView(offset, new_window.size, inverse_rotation));
 								foundFit = true;

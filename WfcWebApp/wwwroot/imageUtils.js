@@ -3,10 +3,11 @@ window.getImagePixels = async (base64String) => {
         let img = new Image();
         img.onload = function () {
             let canvas = document.createElement("canvas");
+            
             canvas.width = img.width;
             canvas.height = img.height;
             
-            let ctx = canvas.getContext("2d");
+            let ctx = canvas.getContext("2d", { willReadFrequently: true });
             ctx.drawImage(img, 0, 0);
             
             let imageData = ctx.getImageData(0, 0, img.width, img.height).data;

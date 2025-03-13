@@ -4,7 +4,7 @@ public class WfcWave : IPatternSource
 {
     // Dictionary to store bitmasks at specific coordinates
     private Dictionary<Vector2I, int> waveDict = new Dictionary<Vector2I, int>();
-    private static Random random = new Random();
+    public static Random random;
 
 
     // Clears any part of the wave, collapsed or otherwise,
@@ -19,6 +19,10 @@ public class WfcWave : IPatternSource
         foreach (Vector2I pos in toRemove) {
             waveDict.Remove(pos);
         }
+    }
+
+    public void Clear() {
+        waveDict.Clear();
     }
 
     // Method to set a bitmask at a specific position

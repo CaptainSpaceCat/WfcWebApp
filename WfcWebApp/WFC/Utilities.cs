@@ -12,7 +12,7 @@ public static class MathUtils
             for (int x = 0; x < w; x++) {
                 pos.X=x;
                 pos.Y=y;
-                yield return pos;
+                yield return new Vector2I(x, y);
             }
         }
     }
@@ -24,7 +24,7 @@ public static class MathUtils
 }
 
 
-public class Vector2I
+public struct Vector2I
 {
     public int X { get; set; }
     public int Y { get; set; }
@@ -83,7 +83,10 @@ public class Vector2I
         return !a.Equals(b);
     }
 
-
+    public override string ToString()
+	{
+		return $"({X},{Y})";
+	}
 }
 
 public struct ColorRGBA
@@ -152,6 +155,7 @@ public class ReferenceView {
     public int rotation = 0;
     public Vector2I origin;
     public int size;
+    public bool wrap = false;
     private IPatternSource source;
     //private Vector2I storedVector = new(); //re-used to avoid re-declaring all the time
 
@@ -162,7 +166,11 @@ public class ReferenceView {
     }
 
 	public int GetBitmask(Vector2I pos) {
-        if (pos.X < 0 || pos.Y < 0 || pos.X >= size || pos.Y >= size) {
+        if (wrap) {
+            int x = ((pos.X % size) + size) % size;
+            int y = ((pos.Y % size) + size) % size;
+            pos = new Vector2I(x, y);
+        } else if (pos.X < 0 || pos.Y < 0 || pos.X >= size || pos.Y >= size) {
             throw new IndexOutOfRangeException($"Can't access position {pos} in reference view of size {size}.");
         }
         return source.GetBitmask(GetRotatedVector(pos, rotation) + origin);

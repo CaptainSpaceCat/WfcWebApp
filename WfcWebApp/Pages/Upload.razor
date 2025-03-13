@@ -73,6 +73,7 @@
     private string? imageDataUrl;
     private WfcWave wfcWave = new();
     private WfcPalette? wfcPalette;
+    private WfcGenerator wfcGenerator = new();
 
     private ImageDataRaw? displayCanvasData;
     private bool hasInputImage = false;
@@ -96,6 +97,10 @@
 
         ImageDataRaw imageData = await JS.InvokeAsync<ImageDataRaw>("getImagePixels", imageDataUrl);
         wfcPalette = new WfcPalette(imageData);
+        wfcWave.Clear();
+
+        wfcGenerator.SetDependencies(wfcWave, wfcPalette, (int)DateTime.UtcNow.Ticks);
+
         inputWidth = imageData.Width;
         inputHeight = imageData.Height;
         inputFilename = file.Name;
@@ -112,6 +117,19 @@
         generateState = 1;
         displayCanvasData = new ImageDataRaw(outputWidth, outputHeight);
 
+        WriteWaveToImageData(wfcWave, displayCanvasData);
+        await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
+        await Task.Delay(10);
+
+        int c = 0;
+        while (wfcGenerator.RunSingle(MathUtils.GridEnumerator(outputWidth, outputHeight))) {
+            if (c%5 == 0) {
+                WriteWaveToImageData(wfcWave, displayCanvasData);
+                await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
+                await Task.Delay(10);
+            }
+            c++;
+        }
         WriteWaveToImageData(wfcWave, displayCanvasData);
         await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
     }

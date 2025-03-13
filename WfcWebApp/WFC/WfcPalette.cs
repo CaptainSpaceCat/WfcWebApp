@@ -43,7 +43,7 @@ public class WfcPalette : IPatternSource {
     }
 
     public ReferenceView GetReferenceView(){
-        ReferenceView view = new ReferenceView(this, Vector2I.Zero, Width);
+        ReferenceView view = new ReferenceView(this, Vector2I.Zero, Width*2);
         return view;
     }
 }
@@ -83,6 +83,12 @@ public class ColorMapping {
     }
 
     public ColorRGBA MaskToColor(int mask) {
+        if (mask == 0) {
+            // This mask is a contradiction!
+            // Let's choose to render these as bright red.
+            return new ColorRGBA(255, 100, 0, 255);
+        }
+
         int r = 0, g = 0, b = 0, a = 0;
         int count = 0;
         for (int i = 0; i < MAX_UNIQUE_COLORS; i++) {
