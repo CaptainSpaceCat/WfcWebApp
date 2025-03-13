@@ -14,8 +14,8 @@
         <li>Name: @inputFilename</li>
         <li>Dimensions (pixels): (@inputWidth, @inputHeight)</li>
         <li>
-            Number of unique colors: @colorMapping.Count
-            @if (!colorMapping.IsValid()) {
+            Number of unique colors: @wfcPalette.colorMapping.Count
+            @if (!wfcPalette.colorMapping.IsValid()) {
                 <p>Too many! Maximum of 32</p>
             }
         </li>
@@ -25,7 +25,7 @@
         </li>
     </ul>
 
-    @if (colorMapping.IsValid()) {
+    @if (wfcPalette.colorMapping.IsValid()) {
         <p>
             <label>
                 Output width:
@@ -72,7 +72,7 @@
 @code {
     private string? imageDataUrl;
     private WfcWave wfcWave = new();
-    private ColorMapping colorMapping = new();
+    private WfcPalette? wfcPalette;
 
     private ImageDataRaw? displayCanvasData;
     private bool hasInputImage = false;
@@ -95,7 +95,7 @@
         imageDataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
 
         ImageDataRaw imageData = await JS.InvokeAsync<ImageDataRaw>("getImagePixels", imageDataUrl);
-        colorMapping.FromImageData(imageData);
+        wfcPalette = new WfcPalette(imageData);
         inputWidth = imageData.Width;
         inputHeight = imageData.Height;
         inputFilename = file.Name;
@@ -112,7 +112,20 @@
         generateState = 1;
         displayCanvasData = new ImageDataRaw(outputWidth, outputHeight);
 
+        WriteWaveToImageData(wfcWave, displayCanvasData);
         await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
+    }
+
+    public void WriteWaveToImageData(WfcWave wave, ImageDataRaw canvas) {
+        Vector2I pos = new();
+        for (int x = 0; x < canvas.Width; x++) {
+            for (int y = 0; y < canvas.Height; y++) {
+                pos.X = x;
+                pos.Y = y;
+                int mask = wave.GetBitmask(pos);
+                canvas.SetPixel(x, y, wfcPalette.colorMapping.MaskToColor(mask));
+            }
+        }
     }
 
 }

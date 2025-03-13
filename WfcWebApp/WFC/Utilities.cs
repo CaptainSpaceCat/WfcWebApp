@@ -1,11 +1,26 @@
 using System.Drawing;
+using System.Runtime.InteropServices;
 
 namespace WfcWebApp.Wfc
 {
 
 public static class MathUtils
 {
+    public static IEnumerable<Vector2I> GridEnumerator(int w, int h) {
+        Vector2I pos = new();
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                pos.X=x;
+                pos.Y=y;
+                yield return pos;
+            }
+        }
+    }
 
+    public static bool IsPointInCircle(Vector2I point, Vector2I center, float radius)
+	{
+		return (point - center).LengthSquared() <= radius * radius;
+	}
 }
 
 
@@ -26,6 +41,11 @@ public class Vector2I
     {
         X = x;
         Y = y;
+    }
+
+    public float LengthSquared()
+    {
+        return X*X + Y*Y;
     }
 
     public static Vector2I operator +(Vector2I a, Vector2I b)
@@ -123,43 +143,129 @@ public class ImageDataRaw
     }
 }
 
-public abstract class ReferenceView {
-	public int size;
+public interface IPatternSource {
+    int GetBitmask(Vector2I index);
+    void SetBitmask(Vector2I index, int mask);
+}
+
+public class ReferenceView {
     public int rotation = 0;
-    private Vector2I vec = new(); //re-used to avoid re-declaring all the time
+    public Vector2I origin;
+    public int size;
+    private IPatternSource source;
+    //private Vector2I storedVector = new(); //re-used to avoid re-declaring all the time
+
+    public ReferenceView(IPatternSource _source, Vector2I _origin, int _size) {
+        source = _source;
+        origin = _origin;
+        size = _size;
+    }
 
 	public int GetBitmask(Vector2I pos) {
         if (pos.X < 0 || pos.Y < 0 || pos.X >= size || pos.Y >= size) {
             throw new IndexOutOfRangeException($"Can't access position {pos} in reference view of size {size}.");
         }
-        RotateSelf(pos, rotation);
-        return GetMaskInternal(vec);
+        return source.GetBitmask(GetRotatedVector(pos, rotation) + origin);
     }
 
-    protected abstract int GetMaskInternal(Vector2I pos);
+    public void SetBitmask(Vector2I pos, int mask) {
+        if (pos.X < 0 || pos.Y < 0 || pos.X >= size || pos.Y >= size) {
+            throw new IndexOutOfRangeException($"Can't access position {pos} in reference view of size {size}.");
+        }
+        source.SetBitmask(GetRotatedVector(pos, rotation) + origin, mask);
+    }
 
+    public int GetEntropy(Vector2I pos) {
+        int mask = GetBitmask(pos);
+		return System.Numerics.BitOperations.PopCount((uint)mask);
+	}
 
-    private void RotateSelf(Vector2I pos, int r) {
+    private Vector2I GetRotatedVector(Vector2I pos, int r) {
+        Vector2I storedVector = new();
         switch (r % 4)
         {
             case 3: //->
-                vec.X = size - 1 - pos.Y;
-                vec.Y = pos.X;
+                storedVector.X = size - 1 - pos.Y;
+                storedVector.Y = pos.X;
                 break;
             case 2: // V
-                vec.X = size - 1 - pos.X;
-                vec.Y = size - 1 - pos.Y;
+                storedVector.X = size - 1 - pos.X;
+                storedVector.Y = size - 1 - pos.Y;
                 break;
             case 1: // <-
-                vec.X = pos.Y;
-                vec.Y = size - 1 - pos.X;
+                storedVector.X = pos.Y;
+                storedVector.Y = size - 1 - pos.X;
                 break;
             default: // ^
-                vec.X = pos.X;
-                vec.Y = pos.Y;
+                storedVector.X = pos.X;
+                storedVector.Y = pos.Y;
                 break;
         }
+        return storedVector;
     }
+
+}
+
+public class BitmaskWindow
+{
+    public int size { get; }
+
+    private int[,] data;
+
+    public BitmaskWindow(int _size, int init_mask = 0)
+    {
+        size = _size;
+        data = new int[size, size];
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                data[x,y] = init_mask;
+            }
+        }
+    }
+
+    public int Get(Vector2I pos) {
+        return data[pos.X, pos.Y];
+    }
+
+    public void AppendAND(ReferenceView view) {
+        if (view.size != size) {
+            throw new IndexOutOfRangeException("Size of view does not match size of window.");
+        }
+        Vector2I pos = new();
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                pos.X = x;
+                pos.Y = y;
+                data[x,y] &= view.GetBitmask(pos);
+            }
+        }
+    }
+
+    public void AppendOR(ReferenceView view) {
+        if (view.size != size) {
+            throw new IndexOutOfRangeException("Size of view does not match size of window.");
+        }
+        Vector2I pos = new();
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                pos.X = x;
+                pos.Y = y;
+                data[x,y] |= view.GetBitmask(pos);
+            }
+        }
+    }
+
+    public bool AnyEqual(byte mask) {
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                if (data[x,y] == mask) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
 
 }
 

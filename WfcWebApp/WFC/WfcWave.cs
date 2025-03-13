@@ -1,13 +1,10 @@
 namespace WfcWebApp.Wfc {
     
-public class WfcWave
+public class WfcWave : IPatternSource
 {
     // Dictionary to store bitmasks at specific coordinates
     private Dictionary<Vector2I, int> waveDict = new Dictionary<Vector2I, int>();
-
     private static Random random = new Random();
-
-    //public Dictionary<Vector2I, int> GetFullWave() => waveDict;
 
 
     // Clears any part of the wave, collapsed or otherwise,
@@ -95,7 +92,7 @@ public class WfcWave
 
     List<Vector2I> position_candidates = new List<Vector2I>();
     public bool GetLeastEntropyPosition(out Vector2I least_entropy_pos, IEnumerable<Vector2I> all_positions, int conv_size) {
-		int current_min = 9999; //start at a value larger than entropy could ever be (max actual entropy = #tile types * 9)
+		int current_min = 9999; //start at a value larger than entropy could ever be (max actual entropy = #tile types * conv_size^2)
 		position_candidates.Clear();
 		least_entropy_pos = new Vector2I();
 		foreach (Vector2I pos in all_positions) {
@@ -135,41 +132,15 @@ public class WfcWave
 		}
 	}
 
-    public WaveSliceView GetSliceView(Vector2I center, int size) {
-        return new WaveSliceView(this, center, size);
+    public ReferenceView GetReferenceView(Vector2I center, int size) {
+        Vector2I topLeft = center - (Vector2I.One * ((size-1)/2));
+        return new ReferenceView(this, topLeft, size);
+    }
+    public ReferenceView GetReferenceView(int size) {
+        return new ReferenceView(this, Vector2I.Zero, size);
     }
 
-}
 
-public class WaveSliceView : ReferenceView{
-	private readonly WfcWave waveRef;
-	private readonly Vector2I topLeft;
-    public readonly Vector2I localCenter;
-    public WaveSliceView(WfcWave waveRef, Vector2I center, int size = 3) {
-        this.waveRef = waveRef;
-        this.localCenter = Vector2I.One * ((size-1)/2);
-        this.topLeft = center - this.localCenter;
-        this.size = size;
-    }
-
-    public bool InBounds(Vector2I pos) {
-		return pos.X >= 0 && pos.Y >= 0 && pos.X < size && pos.Y < size;
-	}
-
-	protected override int GetMaskInternal(Vector2I pos) {
-		if (!InBounds(pos)) {
-			throw new IndexOutOfRangeException($"Position {pos} falls outside the wave slice.");
-		}
-        return waveRef.GetBitmask(pos + topLeft);
-	}
-
-    public void SetBitmask(Vector2I pos, int mask) {
-        waveRef.SetBitmask(pos + topLeft, mask);
-    }
-
-    public int GetEntropy(Vector2I pos) {
-        return waveRef.GetEntropy(pos + topLeft);
-    }
 }
 
 

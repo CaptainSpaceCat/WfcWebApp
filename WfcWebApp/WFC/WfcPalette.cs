@@ -2,6 +2,53 @@ namespace WfcWebApp.Wfc
 {
 
 
+public class WfcPalette : IPatternSource {
+    private int[,] paletteData;
+    public int Width, Height;
+
+    public bool Wrap = false;
+
+    public readonly ColorMapping colorMapping = new();
+
+    public WfcPalette(ImageDataRaw fromImage) {
+        Width = fromImage.Width;
+        Height = fromImage.Height;
+        paletteData = new int[Width, Height];
+        colorMapping.FromImageData(fromImage);
+
+        for (int x = 0; x < Width; x++) {
+            for (int y = 0; y < Height; y++) {
+                paletteData[x,y] = colorMapping.ColorToMask(fromImage.GetPixel(x, y));
+            }
+        }
+    }
+
+    public int GetBitmask(Vector2I pos) {
+        if (Wrap) {
+                                     // handle negatives
+            pos.X = ((pos.X % Width) + Width) % Width;
+            pos.Y = ((pos.Y % Height) + Height) % Height;
+        }
+        return paletteData[pos.X, pos.Y];
+    }
+
+    public void SetBitmask(Vector2I pos, int mask) {
+        throw new InvalidOperationException("The WFC Palette is immutable, cannot set bitmasks here.");
+    }
+
+    public ReferenceView GetReferenceView(Vector2I pos, int size, int rotation=0){
+        ReferenceView view = new ReferenceView(this, pos, size);
+        view.rotation = rotation;
+        return view;
+    }
+
+    public ReferenceView GetReferenceView(){
+        ReferenceView view = new ReferenceView(this, Vector2I.Zero, Width);
+        return view;
+    }
+}
+
+
 public class ColorMapping {
     const int MAX_UNIQUE_COLORS = 32;
     public int Count = 0;
@@ -39,7 +86,8 @@ public class ColorMapping {
         int r = 0, g = 0, b = 0, a = 0;
         int count = 0;
         for (int i = 0; i < MAX_UNIQUE_COLORS; i++) {
-            if ((mask & (1 << i)) != 0 && maskToColor.TryGetValue(mask, out ColorRGBA c)) {
+            int m = mask & (1 << i);
+            if (m != 0 && maskToColor.TryGetValue(m, out ColorRGBA c)) {
                 r += c.R;
                 g += c.G;
                 b += c.B;
