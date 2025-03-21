@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+
 namespace WfcWebApp.Wfc
 {
 
@@ -6,9 +8,42 @@ public class WfcPalette : IPatternSource {
     private int[,] paletteData;
     public int Width, Height;
 
-    public bool Wrap = false;
+    public int ConvSize = 3;
+
+    public bool Wrap = true;
+    public bool RotationalSymmetry = true;
 
     public readonly ColorMapping colorMapping = new();
+
+    
+	private PatternEncodingTrie? PatternTrie;
+    private PatternEncodingTrie?[] DirectionalTries = new PatternEncodingTrie?[4];
+
+    public IEnumerable<Pattern> EnumerateMatchingPatterns(Pattern template, int direction) {
+        if (RotationalSymmetry) { //easy case, all patterns are stored in one big trie
+            foreach (Pattern pattern in PatternTrie.MatchingPatterns(template, direction)) {
+                yield return pattern;
+            }
+        } else { //slightly harder case, patterns are stored in separate tries based on sampling direction
+            foreach (Pattern pattern in DirectionalTries[direction].MatchingPatterns(template, direction)) {
+                yield return pattern;
+            }
+        }
+    }
+
+    public Vector2I CountPatterns() {
+        if (RotationalSymmetry) {
+            if (PatternTrie != null) {
+                return new Vector2I(PatternTrie.CountUnique(), PatternTrie.CountWeight());
+            }
+        } else {
+            if (DirectionalTries[0] != null) {
+                return new Vector2I(DirectionalTries[0].CountUnique(), DirectionalTries[0].CountWeight());
+            }
+        }
+        return Vector2I.Zero;
+    }
+
 
     public WfcPalette(ImageDataRaw fromImage) {
         Width = fromImage.Width;
@@ -23,7 +58,49 @@ public class WfcPalette : IPatternSource {
         }
     }
 
-    public int GetBitmask(Vector2I pos) {
+    private void ClearTries() {
+        if (PatternTrie != null) {
+            PatternTrie.Clear();
+        }
+        for (int i = 0; i < 4; i++) {
+            if (DirectionalTries[i] != null) {
+                DirectionalTries[i].Clear();
+            }
+        }
+    }
+
+    public void Preprocess() {
+        ClearTries();
+        if (RotationalSymmetry) {
+            if (PatternTrie == null) {
+                PatternTrie = new();
+            }
+            //initialize encoding tree
+            foreach(Pattern pattern in GetAllPatterns()) {
+                for (int r = 0; r < 4; r++) {
+                    // the "rotated copy" isn't actually a deep copy of the underlying data,
+                    // rather a copy of the reference view object with a new rotation
+                    PatternTrie.AddPattern(pattern.GetRotatedCopy(r));
+                }
+            }
+        } else {
+            for (int r = 0; r < 4; r++) {
+                if (DirectionalTries[r] == null) {
+                    DirectionalTries[r] = new();
+                }
+            }
+            foreach(Pattern pattern in GetAllPatterns()) {
+                for (int r = 0; r < 4; r++) {
+                    Pattern rotatedPattern = pattern.GetRotatedCopy(r);
+                    DirectionalTries[rotatedPattern.Rotation].AddPattern(rotatedPattern);
+                }
+            }
+        }
+        
+        
+    }
+
+    public int GetValue(Vector2I pos) {
         if (Wrap) {
                                      // handle negatives
             pos.X = ((pos.X % Width) + Width) % Width;
@@ -32,26 +109,42 @@ public class WfcPalette : IPatternSource {
         return paletteData[pos.X, pos.Y];
     }
 
-    public void SetBitmask(Vector2I pos, int mask) {
-        throw new InvalidOperationException("The WFC Palette is immutable, cannot set bitmasks here.");
+    public void SetValue(Vector2I pos, int mask) {
+        throw new InvalidOperationException("The WFC Palette is immutable, cannot set values here.");
     }
 
-    public ReferenceView GetReferenceView(Vector2I pos, int size, int rotation=0){
-        ReferenceView view = new ReferenceView(this, pos, size);
-        view.rotation = rotation;
-        return view;
+    public IEnumerable<Pattern> GetAllPatterns() {
+        Vector2I pos = new();
+        int reduce = Wrap ? 0 : ConvSize-1;
+        for (int y = 0; y < Height - reduce; y++) {
+            for (int x = 0; x < Width - reduce; x++) {
+                pos.X = x;
+                pos.Y = y;
+                yield return GetPattern(pos, ConvSize); //the encoding tree handles rotations internally
+            }
+        }
     }
 
-    public ReferenceView GetReferenceView(){
-        ReferenceView view = new ReferenceView(this, Vector2I.Zero, Width*2);
-        return view;
+    public Pattern GetPattern(Vector2I pos, int size, int rotation=0){
+        return new Pattern(this, pos, size, rotation);
     }
+
+    public Pattern GetRandomPattern() {
+        if (RotationalSymmetry) {
+            return PatternTrie.GetRandomPattern();
+        } else {
+            return DirectionalTries[0].GetRandomPattern();
+        }
+    }
+
 }
 
 
 public class ColorMapping {
     const int MAX_UNIQUE_COLORS = 32;
     public int Count = 0;
+
+    public ColorRGBA DefaultColor => MaskToColor(~0);
 
     private readonly Dictionary<int, ColorRGBA> maskToColor = new();
     private readonly Dictionary<ColorRGBA, int> colorToMask = new();

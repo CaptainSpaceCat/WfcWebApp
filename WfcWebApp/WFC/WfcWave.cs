@@ -1,50 +1,90 @@
-namespace WfcWebApp.Wfc {
-    
-public class WfcWave : IPatternSource
+namespace WfcWebApp.Wfc
 {
-    // Dictionary to store bitmasks at specific coordinates
-    private Dictionary<Vector2I, int> waveDict = new Dictionary<Vector2I, int>();
-    public static Random random;
+    
+public class WfcWave
+{
+    // Dictionary to store sets of possible patterns at each position
+    private Dictionary<Vector2I, HashSet<Pattern>> waveDict = new(); //TODO optimize by storing patterns in a HashTrie instead
+    const int maxEntropy = int.MaxValue;
 
-
-    // Clears any part of the wave, collapsed or otherwise,
-    // whose position fails the provided includePosition delegate (causes it to return false)
-    public void CullWave(Func<Vector2I, bool> includePosition) {
-        List<Vector2I> toRemove = new List<Vector2I>();
-        foreach (Vector2I pos in waveDict.Keys) {
-            if (!includePosition(pos)) {
-                toRemove.Add(pos);
+    public IEnumerable<Pattern> EnumeratePatternSet(Vector2I pos) {
+        if (waveDict.TryGetValue(pos, out HashSet<Pattern> patternSet)) {
+            foreach (Pattern p in patternSet) {
+                yield return p;
             }
         }
-        foreach (Vector2I pos in toRemove) {
-            waveDict.Remove(pos);
-        }
     }
+
+    // If a position key exists in the waveDict, this will offer the pattern hashset there, and return true (initialized)
+    // If a key doesn't exist yet, this will create a pattern hashset at the position, and return false (uninitialized)
+    public bool GetOrCreatePatternSet(Vector2I pos, out HashSet<Pattern> patternSet) {
+        if (waveDict.TryGetValue(pos, out patternSet)) {
+            return true;
+        }
+        patternSet = waveDict[pos] = new();
+        return false;
+    }
+
+    // If a position key exists in the waveDict, this will offer the pattern hashset there, and return true
+    // If a key doesn't exist yet, it will simply return false WITHOUT creating an entry
+    public bool TryGetPatternSet(Vector2I pos, out HashSet<Pattern> patternSet) {
+        if (waveDict.TryGetValue(pos, out patternSet)) {
+            return true;
+        }
+        return false;
+    }
+
 
     public void Clear() {
         waveDict.Clear();
     }
 
-    // Method to set a bitmask at a specific position
-    public void SetBitmask(Vector2I pos, int bitmask)
-    {
-        waveDict[pos] = bitmask;
-    }
-
-    // Method to get a bitmask at a specific position
-    public int GetBitmask(Vector2I pos)
-    {
-        if (waveDict.TryGetValue(pos, out var value))
-        {
-            return value;
-        }
-        return ~0; 
-    }
-
 	public int GetEntropy(Vector2I pos) {
-        int mask = GetBitmask(pos);
-		return System.Numerics.BitOperations.PopCount((uint)mask);
+        if (waveDict.TryGetValue(pos, out var patternSet)) {
+            return patternSet.Count;
+        }
+        return maxEntropy;
 	}
+
+    public bool IsEntropyValid(Vector2I pos, int threshold) {
+        if (waveDict.TryGetValue(pos, out var patternSet)) {
+            return patternSet.Count <= threshold;
+        }
+        // if the wave doesn't have an entry here, we definitely want to process this position
+        return true;
+    }
+
+    private List<Vector2I> positionCandidates = new(); //store and reuse to avoid having to re-declare many times in extremely dense loops
+
+    public bool GetLeastEntropyPosition(out Vector2I leastEntropyPos, IEnumerable<Vector2I>? positionFilter = null, bool includeCollapsed = false) {
+        leastEntropyPos = Vector2I.Zero;
+        if (positionFilter == null) {
+            positionFilter = waveDict.Keys; // default to searching the entire wave
+        }
+        positionCandidates.Clear();
+        int currentMinEntropy = maxEntropy;
+        foreach (Vector2I pos in positionFilter) {
+            int entropy = GetEntropy(pos);
+
+            // entropy must be at least 2; a value of 0 is a contradiction, and value of 1 is collapsed
+            // if includeCollapsed is set to true, we also accept entropy values of 1
+            if ((entropy > 1 || (includeCollapsed && entropy == 1)) && entropy <= currentMinEntropy) {
+                if (entropy < currentMinEntropy) {
+                    currentMinEntropy = entropy;
+                    positionCandidates.Clear();
+                }
+                positionCandidates.Add(pos);
+                Console.WriteLine($"position candidate {pos}");
+            }
+        }
+        if (positionCandidates.Count > 0) {
+            leastEntropyPos = RandomUtils.Choice(positionCandidates);
+            return true;
+        }
+        return false;
+    }
+
+
 
     // Checks if a tile is EXACTLY collapsed (meaning it also returns false for contradictions)
     public bool IsCollapsed(Vector2I pos) {
@@ -56,94 +96,31 @@ public class WfcWave : IPatternSource
         return GetEntropy(pos) > 1;
     }
 
-    public IEnumerable<Vector2I> FindContradictions() {
-        foreach (var kvp in waveDict) {
-            if (kvp.Value == 0) {
-                yield return kvp.Key;
-            }
-        }
+    public bool IsUnobserved(Vector2I pos) {
+        return !waveDict.ContainsKey(pos);
     }
 
-    public int GetEntropyWindow(Vector2I pos, int size) {
-        Vector2I offset = new();
-        int center = (size-1)/2;
-        int total_entropy = 0;
-		for (int x = -center; x < size-center; x++) {
-            for (int y = -center; y < size-center; y++) {
-                offset.X = x;
-                offset.Y = y;
-                int entropy = GetEntropy(pos + offset);
-                total_entropy += entropy;
-            }
-        }
-        return total_entropy;
-	}
+    public bool IsContradiction(Vector2I pos) {
+        return GetEntropy(pos) == 0;
+    }
 
-    public bool GetRandomUncollapsedPosition(out Vector2I random_pos, IEnumerable<Vector2I> all_positions) {
-        position_candidates.Clear();
-        foreach (Vector2I pos in all_positions) {
+    public bool GetRandomUncollapsedPosition(out Vector2I random_pos, IEnumerable<Vector2I>? positionFilter = null) {
+        random_pos = Vector2I.Zero;
+        if (positionFilter == null) {
+            positionFilter = waveDict.Keys; // default to searching the entire wave
+        }
+        positionCandidates.Clear();
+        foreach (Vector2I pos in positionFilter) {
 			if (IsUncollapsed(pos)) {
-                position_candidates.Add(pos);
+                positionCandidates.Add(pos);
             }
         }
-        if (position_candidates.Count == 0) {
-            random_pos = Vector2I.Zero;
-            return false;
+        if (positionCandidates.Count > 0) {
+            random_pos = RandomUtils.Choice(positionCandidates);
+            return true;
         }
-        random_pos = position_candidates[random.Next(position_candidates.Count)];
-        return true;
+        return false;
     }
-
-    List<Vector2I> position_candidates = new List<Vector2I>();
-    public bool GetLeastEntropyPosition(out Vector2I least_entropy_pos, IEnumerable<Vector2I> all_positions, int conv_size) {
-		int current_min = 9999; //start at a value larger than entropy could ever be (max actual entropy = #tile types * conv_size^2)
-		position_candidates.Clear();
-		least_entropy_pos = new Vector2I();
-		foreach (Vector2I pos in all_positions) {
-			if (IsUncollapsed(pos)) {
-                int entropy_window = GetEntropyWindow(pos, conv_size);
-				if (entropy_window <= current_min) {
-					if (entropy_window < current_min) {
-						position_candidates.Clear();
-						current_min = entropy_window;
-					}
-					position_candidates.Add(pos);
-				}
-			}
-		}
-		if (position_candidates.Count > 0){
-			// choose random candidate out of all tiles with equal minimum entropy
-			least_entropy_pos = position_candidates[random.Next(position_candidates.Count)];
-			return true;
-		}
-		// all provided positions have entropy <= 1
-		return false;
-	}
-
-    // Method to check if a specific position has a bitmask set
-    public bool HasBitmask(Vector2I pos)
-    {
-        return waveDict.ContainsKey(pos);
-    }
-
-	public void PrintBitmask(Vector2I pos) {
-		if (!HasBitmask(pos)) {
-			Console.WriteLine("Position contains no bitmask");
-		} else {
-			string binary = Convert.ToString(GetBitmask(pos), 2); // Convert the integer to a binary string
-			int entropy = GetEntropy(pos);
-			Console.WriteLine($"Bitmask at <{pos}>: {binary} | Entropy: {entropy}");
-		}
-	}
-
-    public ReferenceView GetReferenceView(Vector2I center, int size) {
-        Vector2I topLeft = center - (Vector2I.One * ((size-1)/2));
-        return new ReferenceView(this, topLeft, size);
-    }
-    public ReferenceView GetReferenceView(int size) {
-        return new ReferenceView(this, Vector2I.Zero, size);
-    }
-
 
 }
 

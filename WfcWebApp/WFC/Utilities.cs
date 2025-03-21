@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace WfcWebApp.Wfc
@@ -17,12 +18,38 @@ public static class MathUtils
         }
     }
 
-    public static bool IsPointInCircle(Vector2I point, Vector2I center, float radius)
+    public static bool IsPointInCircle(Vector2I point, Circle boundary)
 	{
-		return (point - center).LengthSquared() <= radius * radius;
+		return (point - boundary.Center).LengthSquared() <= boundary.RadiusSquared;
 	}
+
+    public static IEnumerable<int> GetActiveBitsFast(ulong bitmask)
+    {
+        while (bitmask != 0)
+        {
+            int index = BitOperations.TrailingZeroCount(bitmask); // Find index of lowest set bit
+            yield return index;
+            bitmask &= (bitmask - 1); // Clear the lowest set bit
+        }
+    }
 }
 
+public struct Circle
+{
+    public Vector2I Center { get; set; }
+    public float Radius { get; set; }
+
+    public readonly float RadiusSquared {
+        get {
+            return Radius * Radius;
+        }
+    }
+
+    public Circle(Vector2I center, float radius) {
+        Center = center;
+        Radius = radius;
+    }
+}
 
 public struct Vector2I
 {
@@ -31,6 +58,10 @@ public struct Vector2I
 
     public static Vector2I Zero = new();
     public static Vector2I One = new(1,1);
+    public static Vector2I Up = new(0,-1);
+    public static Vector2I Down = new(0,1);
+    public static Vector2I Left = new(-1,0);
+    public static Vector2I Right = new(1,0);
 
     public Vector2I()
     {
@@ -87,6 +118,46 @@ public struct Vector2I
 	{
 		return $"({X},{Y})";
 	}
+
+    public static IEnumerable<Vector2I> Neighbors(Vector2I pos) {
+        yield return pos + Vector2I.Up;
+        yield return pos + Vector2I.Right;
+        yield return pos + Vector2I.Down;
+        yield return pos + Vector2I.Left;
+    }
+
+    public int DirectionTo(Vector2I other) {
+        Vector2I diff = other - this;
+        if (diff == Vector2I.Up) {
+            return 0;
+        }
+        if (diff == Vector2I.Right) {
+            return 1;
+        }
+        if (diff == Vector2I.Down) {
+            return 2;
+        }
+        if (diff == Vector2I.Left) {
+            return 3;
+        }
+        return -1;
+    }
+}
+
+public struct ColorInt
+{
+    public int R, G, B, A;
+
+    public ColorInt(int r, int g, int b, int a) {
+        R=r;
+        G=g;
+        B=b;
+        A=a;
+    }
+
+    public static ColorInt operator +(ColorInt a, ColorInt b) {
+        return new ColorInt(a.R + b.R,a.G + b.G, a.B + b.B, a.A + b.A);
+    }
 }
 
 public struct ColorRGBA
@@ -146,86 +217,20 @@ public class ImageDataRaw
     }
 }
 
-public interface IPatternSource {
-    int GetBitmask(Vector2I index);
-    void SetBitmask(Vector2I index, int mask);
-}
 
-public class ReferenceView {
-    public int rotation = 0;
-    public Vector2I origin;
-    public int size;
-    public bool wrap = false;
-    private IPatternSource source;
-    //private Vector2I storedVector = new(); //re-used to avoid re-declaring all the time
-
-    public ReferenceView(IPatternSource _source, Vector2I _origin, int _size) {
-        source = _source;
-        origin = _origin;
-        size = _size;
-    }
-
-	public int GetBitmask(Vector2I pos) {
-        if (wrap) {
-            int x = ((pos.X % size) + size) % size;
-            int y = ((pos.Y % size) + size) % size;
-            pos = new Vector2I(x, y);
-        } else if (pos.X < 0 || pos.Y < 0 || pos.X >= size || pos.Y >= size) {
-            throw new IndexOutOfRangeException($"Can't access position {pos} in reference view of size {size}.");
-        }
-        return source.GetBitmask(GetRotatedVector(pos, rotation) + origin);
-    }
-
-    public void SetBitmask(Vector2I pos, int mask) {
-        if (pos.X < 0 || pos.Y < 0 || pos.X >= size || pos.Y >= size) {
-            throw new IndexOutOfRangeException($"Can't access position {pos} in reference view of size {size}.");
-        }
-        source.SetBitmask(GetRotatedVector(pos, rotation) + origin, mask);
-    }
-
-    public int GetEntropy(Vector2I pos) {
-        int mask = GetBitmask(pos);
-		return System.Numerics.BitOperations.PopCount((uint)mask);
-	}
-
-    private Vector2I GetRotatedVector(Vector2I pos, int r) {
-        Vector2I storedVector = new();
-        switch (r % 4)
-        {
-            case 3: //->
-                storedVector.X = size - 1 - pos.Y;
-                storedVector.Y = pos.X;
-                break;
-            case 2: // V
-                storedVector.X = size - 1 - pos.X;
-                storedVector.Y = size - 1 - pos.Y;
-                break;
-            case 1: // <-
-                storedVector.X = pos.Y;
-                storedVector.Y = size - 1 - pos.X;
-                break;
-            default: // ^
-                storedVector.X = pos.X;
-                storedVector.Y = pos.Y;
-                break;
-        }
-        return storedVector;
-    }
-
-}
 
 public class BitmaskWindow
 {
-    public int size { get; }
+    public int Size { get; }
 
     private int[,] data;
 
-    public BitmaskWindow(int _size, int init_mask = 0)
+    public BitmaskWindow(int _Size, int init_mask = 0)
     {
-        size = _size;
-        data = new int[size, size];
-        for (int x = 0; x < size; x++) {
-            for (int y = 0; y < size; y++) {
+        Size = _Size;
+        data = new int[Size, Size];
+        for (int x = 0; x < Size; x++) {
+            for (int y = 0; y < Size; y++) {
                 data[x,y] = init_mask;
             }
         }
@@ -235,37 +240,37 @@ public class BitmaskWindow
         return data[pos.X, pos.Y];
     }
 
-    public void AppendAND(ReferenceView view) {
-        if (view.size != size) {
-            throw new IndexOutOfRangeException("Size of view does not match size of window.");
+    public void AppendAND(Pattern view) {
+        if (view.Size != Size) {
+            throw new IndexOutOfRangeException("Size of view does not match Size of window.");
         }
         Vector2I pos = new();
-        for (int x = 0; x < size; x++) {
-            for (int y = 0; y < size; y++) {
+        for (int x = 0; x < Size; x++) {
+            for (int y = 0; y < Size; y++) {
                 pos.X = x;
                 pos.Y = y;
-                data[x,y] &= view.GetBitmask(pos);
+                data[x,y] &= view.GetValue(pos);
             }
         }
     }
 
-    public void AppendOR(ReferenceView view) {
-        if (view.size != size) {
-            throw new IndexOutOfRangeException("Size of view does not match size of window.");
+    public void AppendOR(Pattern view) {
+        if (view.Size != Size) {
+            throw new IndexOutOfRangeException("Size of view does not match Size of window.");
         }
         Vector2I pos = new();
-        for (int x = 0; x < size; x++) {
-            for (int y = 0; y < size; y++) {
+        for (int x = 0; x < Size; x++) {
+            for (int y = 0; y < Size; y++) {
                 pos.X = x;
                 pos.Y = y;
-                data[x,y] |= view.GetBitmask(pos);
+                data[x,y] |= view.GetValue(pos);
             }
         }
     }
 
     public bool AnyEqual(byte mask) {
-        for (int x = 0; x < size; x++) {
-            for (int y = 0; y < size; y++) {
+        for (int x = 0; x < Size; x++) {
+            for (int y = 0; y < Size; y++) {
                 if (data[x,y] == mask) {
                     return true;
                 }
@@ -276,5 +281,51 @@ public class BitmaskWindow
 
 
 }
+
+
+
+public class PatternMask
+{
+	private ulong[] bits;
+
+	public PatternMask(int Size)
+	{
+		bits = new ulong[(Size + 63) / 64]; // Round up
+	}
+
+	public void Set(int index)
+	{
+		bits[index / 64] |= (1UL << (index % 64));
+	}
+
+	public void Clear(int index)
+	{
+		bits[index / 64] &= ~(1UL << (index % 64));
+	}
+
+	public bool Get(int index)
+	{
+		return (bits[index / 64] & (1UL << (index % 64))) != 0;
+	}
+
+	public void And(PatternMask other)
+	{
+		for (int i = 0; i < bits.Length; i++)
+			bits[i] &= other.bits[i];
+	}
+
+    public int GetEntropy()
+    {
+        // count up and return the number of 1's in the mask
+        int count = 0;
+        foreach (ulong value in bits)
+        {
+            count += BitOperations.PopCount(value);
+        }
+        return count;
+    }
+
+}
+
 
 }

@@ -20,9 +20,21 @@
             }
         </li>
         <li>
+            <p>Number / Weight of unique patterns: @wfcPalette.CountPatterns()</p>
+        </li>
+        <li>
             <img src="@imageDataUrl" alt="Failed to display image." 
             style="display: block; margin-top: 10px; width: @(inputWidth*3)px; height: @(inputHeight*3)px; image-rendering: pixelated;">
         </li>
+        <li>
+            Input wraparound mode:
+            <input type="checkbox" @bind="wfcPalette.Wrap" />
+        </li>
+        <li>
+            Include Symmetries:
+            <input type="checkbox" @bind="wfcPalette.RotationalSymmetry" />
+        </li>
+        <li><button @onclick="OnPreprocess">Preprocess</button></li>
     </ul>
 
     @if (wfcPalette.colorMapping.IsValid()) {
@@ -39,7 +51,7 @@
         <p>
             <label>
                 Wraparound mode:
-                <input type="checkbox" @bind="wraparoundMode" />
+                <input type="checkbox" @bind="outputWrapMode" />
             </label>
         </p>
 
@@ -80,7 +92,8 @@
     private string? inputFilename;
     private int inputWidth, inputHeight;
 
-    private bool wraparoundMode = false;
+    private bool inputWrapMode = false;
+    private bool outputWrapMode = false;
     private int generateState = 0;
 
     private async Task OnFileChange(InputFileChangeEventArgs e)
@@ -117,31 +130,118 @@
         generateState = 1;
         displayCanvasData = new ImageDataRaw(outputWidth, outputHeight);
 
-        WriteWaveToImageData(wfcWave, displayCanvasData);
+        WriteWaveToImageDataTest(wfcWave, displayCanvasData);
         await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
         await Task.Delay(10);
+        Console.WriteLine("Wrote default image");
 
         int c = 0;
         while (wfcGenerator.RunSingle(MathUtils.GridEnumerator(outputWidth, outputHeight))) {
             if (c%5 == 0) {
-                WriteWaveToImageData(wfcWave, displayCanvasData);
+                WriteWaveToImageDataTest(wfcWave, displayCanvasData);
                 await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
                 await Task.Delay(10);
             }
             c++;
         }
-        WriteWaveToImageData(wfcWave, displayCanvasData);
+        WriteWaveToImageDataTest(wfcWave, displayCanvasData);
         await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
     }
 
+    private async Task OnPreprocess()
+    {
+        wfcGenerator.wfcPalette.Preprocess();
+    }
+
+    public void WriteWaveToImageDataTest(WfcWave wave, ImageDataRaw canvas)
+    {
+        Vector2I pos = new();
+        for (int x = 0; x < canvas.Width; x++)
+        {
+            for (int y = 0; y < canvas.Height; y++)
+            {
+                pos.X = x;
+                pos.Y = y;
+                ColorRGBA color = new();
+                color.A = 255;
+                if (wave.IsUnobserved(pos))
+                {
+                    color.R = color.G = color.B = 127;
+                }
+                else if (wave.IsContradiction(pos))
+                {
+                    color.R = 255;
+                    color.G = 150;
+                }
+                else if (wave.IsCollapsed(pos))
+                {
+                    color.G = 255;
+                }
+                else
+                {
+                    color.B = (byte)Math.Clamp(255 - 25*wave.GetEntropy(pos), 0, 255);
+                    
+                }
+                canvas.SetPixel(x, y, color);
+            }
+        }
+    }
+
+
     public void WriteWaveToImageData(WfcWave wave, ImageDataRaw canvas) {
+        int[,,] swatch = new int[canvas.Width, canvas.Height, 4];
         Vector2I pos = new();
         for (int x = 0; x < canvas.Width; x++) {
             for (int y = 0; y < canvas.Height; y++) {
                 pos.X = x;
                 pos.Y = y;
-                int mask = wave.GetBitmask(pos);
-                canvas.SetPixel(x, y, wfcPalette.colorMapping.MaskToColor(mask));
+                if (wave.IsUnobserved(pos)) {
+                    //render the default color as a mix of all possible
+                    ColorRGBA color = wfcPalette.colorMapping.DefaultColor;
+                    swatch[x,y,0] += color.R;
+                    swatch[x,y,1] += color.G;
+                    swatch[x,y,2] += color.B;
+                    swatch[x,y,3] += color.A;
+                } else if (wave.IsContradiction(pos)) {
+                    // probably change this later to something more distinct, flashing red maybe?
+                    // could maybe render a flashing red square underneath, and write a transparent pixel?
+                    swatch[x,y,0] += 255; //add a bunch of red (and test on inputs w/o red pixels lol)
+                } else {
+                    // There are mutliple defined options for the wave at this position
+                    if (wave.GetOrCreatePatternSet(pos, out var patternSet)) {
+                        int denominator = 0;
+                        foreach (Pattern p in patternSet) {
+                            int mask = p.GetValue(Vector2I.Zero); //For now, render based on the top left of each wave pattern set
+                                                                  // we can worry about the overlap later TODO
+                            ColorRGBA color = wfcPalette.colorMapping.MaskToColor(mask);
+                            swatch[x,y,0] += color.R;
+                            swatch[x,y,1] += color.G;
+                            swatch[x,y,2] += color.B;
+                            swatch[x,y,3] += color.A;
+                            denominator++;
+                        }
+                        swatch[x,y,0] /= denominator;
+                        swatch[x,y,1] /= denominator;
+                        swatch[x,y,2] /= denominator;
+                        swatch[x,y,3] /= denominator;
+                    } else {
+                        // any situation that would cause GetOrCreatePatternSet to fail should have been caught in the above cases
+                        throw new Exception("Should not be possible to get here.");
+                    }
+                }
+            }
+        }
+
+        for (int x = 0; x < canvas.Width; x++) {
+            for (int y = 0; y < canvas.Height; y++) {
+                ColorRGBA color = new ColorRGBA(
+                    (byte)(swatch[x,y,0]),
+                    (byte)(swatch[x,y,1]),
+                    (byte)(swatch[x,y,2]),
+                    (byte)(swatch[x,y,3])
+                );
+                //Console.WriteLine($"{swatch[x,y,0]}, {swatch[x,y,1]}, {swatch[x,y,1]}");
+                canvas.SetPixel(x, y, color);
             }
         }
     }
