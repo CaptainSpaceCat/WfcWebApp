@@ -22,6 +22,7 @@ public class WfcPalette : IPatternSource {
     public IEnumerable<Pattern> EnumerateMatchingPatterns(Pattern template, int direction) {
         if (RotationalSymmetry) { //easy case, all patterns are stored in one big trie
             foreach (Pattern pattern in PatternTrie.MatchingPatterns(template, direction)) {
+                //Console.WriteLine(pattern);
                 yield return pattern;
             }
         } else { //slightly harder case, patterns are stored in separate tries based on sampling direction
@@ -83,6 +84,8 @@ public class WfcPalette : IPatternSource {
                     PatternTrie.AddPattern(pattern.GetRotatedCopy(r));
                 }
             }
+            // recursively init the weights of the nodes in the trie (at every level)
+            PatternTrie.InitializeWeight();
         } else {
             for (int r = 0; r < 4; r++) {
                 if (DirectionalTries[r] == null) {
@@ -94,6 +97,9 @@ public class WfcPalette : IPatternSource {
                     Pattern rotatedPattern = pattern.GetRotatedCopy(r);
                     DirectionalTries[rotatedPattern.Rotation].AddPattern(rotatedPattern);
                 }
+            }
+            for (int r = 0; r < 4; r++) {
+                DirectionalTries[r].InitializeWeight();
             }
         }
         

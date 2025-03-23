@@ -20,8 +20,8 @@ window.getImagePixels = async (base64String) => {
 };
 
 
-window.updateCanvasPixels = (width, height, pixeldata) => {
-    let canvas = document.getElementById("outputCanvas");
+window.updateCanvasPixels = (canvasId, width, height, pixeldata) => {
+    let canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
     let ctx = canvas.getContext("2d");

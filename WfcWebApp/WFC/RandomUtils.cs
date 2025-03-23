@@ -78,6 +78,10 @@ public static class RandomUtils
             counter.Clear();
         }
 
+        public int Count() {
+            return counter.Count;
+        }
+
         public T Sample() {
             return GetWeightedRandomKey(counter);
         }

@@ -3,34 +3,70 @@ namespace WfcWebApp.Wfc
     
 public class WfcWave
 {
+    //TODO store collapsed position tracker in here instead
+    // add function to 
+
+
     // Dictionary to store sets of possible patterns at each position
-    private Dictionary<Vector2I, HashSet<Pattern>> waveDict = new(); //TODO optimize by storing patterns in a HashTrie instead
+    private Dictionary<Vector2I, PatternSet> waveDict = new(); //TODO optimize by storing patterns in a HashTrie instead
     const int maxEntropy = int.MaxValue;
 
+    public bool Wrap = true;
+
+    public Vector2I? boundaryCorner = null;
+    public Vector2I boundaryShape;
+
+    private bool InBounds(Vector2I pos) {
+        // if the boundaries of the wave are set, perform the check
+        if (boundaryCorner != null) {
+            Vector2I posAdjusted = pos - boundaryCorner.Value;
+            return !(posAdjusted.X < 0 || posAdjusted.Y < 0
+            || posAdjusted.X >= boundaryShape.X || posAdjusted.Y >= boundaryShape.Y);
+        }
+        return true; //no boundaries = always in bounds!
+    }
+
+    private Vector2I BoundaryWrap(Vector2I pos) {
+        // if the boundaries are set and Wrap is true, perform the wrapping
+        if (boundaryCorner != null && Wrap) {
+            Vector2I posAdjusted = pos - boundaryCorner.Value;
+            posAdjusted = ((posAdjusted % boundaryShape) + boundaryShape) % boundaryShape;
+            return posAdjusted + boundaryCorner.Value;
+        }
+        // if there's no boundary or wrap is false, just return the same pos
+        return pos;
+    }
+
+    private bool BoundaryCheck(Vector2I pos, out Vector2I outPos) {
+        outPos = BoundaryWrap(pos);
+        if (!InBounds(outPos)) {
+            //Console.WriteLine($"pos {pos} outpos {outPos} OUT OF BOUNDS");
+            return false;
+        }
+        //Console.WriteLine($"pos {pos} outpos {outPos} in bounds");
+        return true;
+    }
+
+
     public IEnumerable<Pattern> EnumeratePatternSet(Vector2I pos) {
-        if (waveDict.TryGetValue(pos, out HashSet<Pattern> patternSet)) {
+        if (TryAccessWave(pos, out PatternSet patternSet)) {
             foreach (Pattern p in patternSet) {
                 yield return p;
             }
         }
     }
 
-    // If a position key exists in the waveDict, this will offer the pattern hashset there, and return true (initialized)
-    // If a key doesn't exist yet, this will create a pattern hashset at the position, and return false (uninitialized)
-    public bool GetOrCreatePatternSet(Vector2I pos, out HashSet<Pattern> patternSet) {
-        if (waveDict.TryGetValue(pos, out patternSet)) {
-            return true;
-        }
-        patternSet = waveDict[pos] = new();
-        return false;
-    }
 
-    // If a position key exists in the waveDict, this will offer the pattern hashset there, and return true
-    // If a key doesn't exist yet, it will simply return false WITHOUT creating an entry
-    public bool TryGetPatternSet(Vector2I pos, out HashSet<Pattern> patternSet) {
-        if (waveDict.TryGetValue(pos, out patternSet)) {
+
+    public bool GetOrCreatePatternSet(Vector2I pos, out PatternSet patternSet) {
+        if (BoundaryCheck(pos, out Vector2I bounded_pos)) {
+            if (waveDict.TryGetValue(bounded_pos, out patternSet)) {
+                return true;
+            }
+            patternSet = waveDict[bounded_pos] = new();
             return true;
         }
+        patternSet = null;
         return false;
     }
 
@@ -40,18 +76,32 @@ public class WfcWave
     }
 
 	public int GetEntropy(Vector2I pos) {
-        if (waveDict.TryGetValue(pos, out var patternSet)) {
+        if (TryAccessWave(pos, out var patternSet)) {
             return patternSet.Count;
         }
         return maxEntropy;
 	}
 
-    public bool IsEntropyValid(Vector2I pos, int threshold) {
-        if (waveDict.TryGetValue(pos, out var patternSet)) {
-            return patternSet.Count <= threshold;
+    private Vector2I boundedPos;
+    private bool TryAccessWave(Vector2I pos, out PatternSet patternSet) {
+        if (BoundaryCheck(pos, out Vector2I boundedPos)) {
+            return waveDict.TryGetValue(boundedPos, out patternSet);
         }
-        // if the wave doesn't have an entry here, we definitely want to process this position
-        return true;
+        patternSet = null;
+        return false;
+    }
+    
+    public int GetMaxObservedEntropy() {
+        int max_seen = 0;
+        foreach (Vector2I pos in waveDict.Keys) {
+            if (IsUncollapsed(pos)) {
+                int entropy = GetEntropy(pos);
+                if (entropy > max_seen) {
+                    max_seen = entropy;
+                }
+            }
+        }
+        return max_seen;
     }
 
     private List<Vector2I> positionCandidates = new(); //store and reuse to avoid having to re-declare many times in extremely dense loops
@@ -74,7 +124,7 @@ public class WfcWave
                     positionCandidates.Clear();
                 }
                 positionCandidates.Add(pos);
-                Console.WriteLine($"position candidate {pos}");
+                //Console.WriteLine($"position candidate {pos}");
             }
         }
         if (positionCandidates.Count > 0) {
@@ -97,11 +147,17 @@ public class WfcWave
     }
 
     public bool IsUnobserved(Vector2I pos) {
-        return !waveDict.ContainsKey(pos);
+        if (TryAccessWave(pos, out PatternSet waveSet)) {
+            return waveSet.IsUnobserved;
+        }
+        return true;
     }
 
     public bool IsContradiction(Vector2I pos) {
-        return GetEntropy(pos) == 0;
+        if (TryAccessWave(pos, out PatternSet waveSet)) {
+            return !waveSet.IsUnobserved && GetEntropy(pos) == 0;
+        }
+        return false;
     }
 
     public bool GetRandomUncollapsedPosition(out Vector2I random_pos, IEnumerable<Vector2I>? positionFilter = null) {
@@ -111,8 +167,10 @@ public class WfcWave
         }
         positionCandidates.Clear();
         foreach (Vector2I pos in positionFilter) {
-			if (IsUncollapsed(pos)) {
-                positionCandidates.Add(pos);
+            if (BoundaryCheck(pos, out Vector2I wrapped)) {
+                if (IsUncollapsed(pos)) {
+                    positionCandidates.Add(wrapped);
+                }
             }
         }
         if (positionCandidates.Count > 0) {

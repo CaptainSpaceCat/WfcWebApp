@@ -32,6 +32,15 @@ public static class MathUtils
             bitmask &= (bitmask - 1); // Clear the lowest set bit
         }
     }
+
+    public static float Lerp(float a, float min, float max) {
+        a = Math.Clamp(a, 0, 1);
+        return min + (max-min)*a;
+    }
+    public static float InverseLerp(float a, float min, float max) {
+        a = Math.Clamp(a, min, max);
+        return (a - min) / (max - min);
+    }
 }
 
 public struct Circle
@@ -114,6 +123,10 @@ public struct Vector2I
         return !a.Equals(b);
     }
 
+    public static Vector2I operator %(Vector2I a, Vector2I b) {
+        return new Vector2I(a.X % b.X, a.Y % b.Y);
+    }
+
     public override string ToString()
 	{
 		return $"({X},{Y})";
@@ -144,22 +157,6 @@ public struct Vector2I
     }
 }
 
-public struct ColorInt
-{
-    public int R, G, B, A;
-
-    public ColorInt(int r, int g, int b, int a) {
-        R=r;
-        G=g;
-        B=b;
-        A=a;
-    }
-
-    public static ColorInt operator +(ColorInt a, ColorInt b) {
-        return new ColorInt(a.R + b.R,a.G + b.G, a.B + b.B, a.A + b.A);
-    }
-}
-
 public struct ColorRGBA
 {
     public byte R, G, B, A;
@@ -170,6 +167,84 @@ public struct ColorRGBA
         B=b;
         A=a;
     }
+
+    public static ColorRGBA Lerp(ColorRGBA a, ColorRGBA b, float t)
+	{
+		return new ColorRGBA(
+			(byte)(a.R + (b.R - a.R) * t),
+			(byte)(a.G + (b.G - a.G) * t),
+			(byte)(a.B + (b.B - a.B) * t),
+			(byte)(a.A + (b.A - a.A) * t)
+		);
+	}
+}
+
+public class ColorGradient
+{
+
+
+	private readonly List<(float t, ColorRGBA color)> stops = new();
+
+	public void Add(ColorRGBA color, float t)
+	{
+		t = Math.Clamp(t, 0f, 1f);
+
+		// Keep stops sorted by t
+		int index = stops.FindIndex(stop => t < stop.t);
+		if (index >= 0)
+			stops.Insert(index, (t, color));
+		else
+			stops.Add((t, color));
+	}
+
+	public void Clear()
+	{
+		stops.Clear();
+	}
+
+	public ColorRGBA Sample(float t)
+	{
+		if (stops.Count == 0)
+			throw new InvalidOperationException("Gradient is empty.");
+
+		t = Math.Clamp(t, 0f, 1f);
+
+		// Handle edge cases
+		if (t <= stops[0].t) return stops[0].color;
+		if (t >= stops[^1].t) return stops[^1].color;
+
+		// Binary search for the two surrounding stops
+		for (int i = 0; i < stops.Count - 1; i++)
+		{
+			var (t0, c0) = stops[i];
+			var (t1, c1) = stops[i + 1];
+
+			if (t >= t0 && t <= t1)
+			{
+				float alpha = (t - t0) / (t1 - t0);
+				return ColorRGBA.Lerp(c0, c1, alpha);
+			}
+		}
+
+		// Shouldn't happen if above logic is correct
+		return stops[^1].color;
+	}
+
+    public static readonly ColorGradient Rainbow = CreateRainbow();
+
+    private static ColorGradient CreateRainbow()
+    {
+        var gradient = new ColorGradient();
+        gradient.Add(new ColorRGBA(255, 0, 0, 255), 0.0f);
+        gradient.Add(new ColorRGBA(255, 127, 0, 255), 0.17f);
+        gradient.Add(new ColorRGBA(255, 255, 0, 255), 0.33f);
+        gradient.Add(new ColorRGBA(0, 255, 0, 255), 0.5f);
+        gradient.Add(new ColorRGBA(0, 0, 255, 255), 0.66f);
+        gradient.Add(new ColorRGBA(75, 0, 130, 255), 0.83f);
+        gradient.Add(new ColorRGBA(143, 0, 255, 255), 1.0f);
+        return gradient;
+    }
+
 }
 
 public class ImageDataRaw

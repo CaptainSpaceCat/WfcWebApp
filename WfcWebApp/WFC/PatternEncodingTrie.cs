@@ -17,6 +17,11 @@ public class PatternEncodingTrie
         curr.AddLeaf(pattern);
     }
 
+    public void InitializeWeight() {
+        // recursively init the weights of the nodes in the trie
+        root.InitializeWeight();
+    }
+
     // Iterates through every pattern that would fit on top of the template with offset 1 in the specified direction (0 is up, 1 is right, ect)
     // if a match rotation is specified, will only return patterns that were sampled with the same rotation
     public IEnumerable<Pattern> MatchingPatterns(Pattern template, int direction) {
@@ -25,18 +30,19 @@ public class PatternEncodingTrie
         int i = 0;
         TrieNode? curr = root;
         foreach (int tileId in rotatedTemplate) {
-            if (rotatedTemplate.Size < i++) {
+            if (rotatedTemplate.Size > i++) {
                 continue; //skip the first row of the convolution
             }
             curr = curr.GetChild(tileId);
             if (curr == null) {
+                Console.WriteLine($"Error in the encoding trie, analyzing direction {direction} for pattern \n{template}");
                 yield break; // if we find null on the way through this pattern, we know we have a contradiction
             }
         }
         // curr should now point to a treenode containing only patterns that would match the above template
         // we can just recursively iterate down the tree
         foreach (Pattern pattern in TraversePatterns(curr)) {
-            yield return pattern;
+            yield return pattern.GetRotatedCopy(direction - 2);
         }
 
         
@@ -44,7 +50,7 @@ public class PatternEncodingTrie
 
     private IEnumerable<Pattern> TraversePatterns(TrieNode node) {
         if (node.Leaf != null) {
-            yield return node.Leaf.Pattern;
+            yield return node.Leaf;
         } else {
             foreach (TrieNode child in node.GetAllChildren()) {
                 foreach (Pattern pattern in TraversePatterns(child)) {
@@ -55,18 +61,23 @@ public class PatternEncodingTrie
     }
 
     public Pattern GetRandomPattern() {
-        //TODO make this sample by weight instead of uniformly
-        return RandomPatternHelper(root);
+        // sample a ticket index from 0 to full trie's weight
+        int ticket = RandomUtils.Random.Next(root.Weight);
+        
+        return RandomPatternHelper(root, ticket);
     }
-    private Pattern RandomPatternHelper(TrieNode node) {
+    private Pattern RandomPatternHelper(TrieNode node, int ticket) {
         if (node.Leaf != null) {
-            return node.Leaf.Pattern;
+            return node.Leaf;
         }
-        var children = node.GetAllChildren().ToList();
-        if (children.Count > 0) {
-            return RandomPatternHelper(RandomUtils.Choice(children));
+        int cumulative_weight = 0;
+        foreach (TrieNode child in node.GetAllChildren()) {
+            cumulative_weight += child.Weight;
+            if (cumulative_weight > ticket) {
+                return RandomPatternHelper(child, ticket - cumulative_weight + child.Weight);
+            }
         }
-        return null;
+        throw new Exception("Failed to traverse pattern during weighted random sample");
     }
     
     public void Clear() {
@@ -75,11 +86,11 @@ public class PatternEncodingTrie
     }
 
     public int CountWeight() {
-        return root.CountWeight();
+        return root.Weight;
     }
 
     public int CountUnique() {
-        return root.CountUnique();
+        return root.CountLeaves();
     }
 
 
@@ -87,32 +98,21 @@ public class PatternEncodingTrie
     {
         private Dictionary<int, TrieNode>? Children = null;
         
-        public TrieLeaf? Leaf = null;
+        public Pattern? Leaf = null;
 
+        public int Weight { get; private set; }
 
-        public int CountWeight() {
+        public void InitializeWeight() {
             if (Leaf != null) {
-                return Leaf.Pattern.Weight;
-            }
-            int total = 0;
-            if (Children != null) {
+                Weight = Leaf.Weight;
+            } else {
+                int total = 0;
                 foreach (TrieNode child in Children.Values) {
-                    total += child.CountWeight();
+                    child.InitializeWeight();
+                    total += child.Weight;
                 }
+                Weight = total;
             }
-            return total;
-        }
-        public int CountUnique() {
-            if (Leaf != null) {
-                return 1;
-            }
-            int total = 0;
-            if (Children != null) {
-                foreach (TrieNode child in Children.Values) {
-                    total += child.CountUnique();
-                }
-            }
-            return total;
         }
 
         public TrieNode GetOrAddChild(int childIndex) {
@@ -145,20 +145,27 @@ public class PatternEncodingTrie
         // Creates a new Leaf if none exists, and increments its weight either way
         public void AddLeaf(Pattern pattern) {
             if (Leaf == null) {
-                Leaf = new(pattern);
+                Leaf = pattern;
             }
-            Leaf.AddWeight();
+            //add weight to this leaf (pattern)
+            Leaf.Weight++;
+        }
+
+        public int CountLeaves() {
+            if (Leaf != null) {
+                return 1;
+            }
+            int total = 0;
+            foreach (TrieNode child in GetAllChildren()) {
+                total += child.CountLeaves();
+            }
+            return total;
         }
     }
 
     public class TrieLeaf
     {
         public Pattern Pattern;
-        public int Rotation; // store the rotation the pattern ref was in when we added this leaf
-        // this needs to be done because we're storing all copies of a rotated pattern as the same Pattern object
-        // that is, 4 leaves will point to the same Pattern, which itself points to a slice of the palette
-        // these 4 leaves will each be hashed at a different rotation of that same pattern
-        // so when reading from the leaves, we must account for this by rotating the pattern to the leaf's stored rotation
 
         public TrieLeaf(Pattern p) {
             Pattern = p;
@@ -183,13 +190,14 @@ public class Pattern {
     public int Size { get; }
     public bool Wrap = false;
     private IPatternSource PatternSource;
-    public int Weight = 0;
+    public int Weight;
 
-    public Pattern(IPatternSource _Source, Vector2I _Origin, int _Size, int _Rotation = 0) {
+    public Pattern(IPatternSource _Source, Vector2I _Origin, int _Size, int _Rotation = 0, int weight = 0) {
         PatternSource = _Source;
         Origin = _Origin;
         Size = _Size;
         Rotation = _Rotation;
+        Weight = weight;
     }
 
     public override int GetHashCode()
@@ -226,7 +234,7 @@ public class Pattern {
 
     public Pattern GetRotatedCopy(int amount) {
         int newRotation = (((Rotation + amount) % 4) + 4) % 4;
-        return new Pattern(PatternSource, Origin, Size, newRotation);
+        return new Pattern(PatternSource, Origin, Size, newRotation, Weight);
     }
 
     public int GetValue(Vector2I pos) {
@@ -252,15 +260,12 @@ public class Pattern {
         Vector2I pos = new();
 		for (int y = 0; y < Size; y++) {
             for (int x = 0; x < Size; x++) {
-                pos.X = x + Origin.X;
-                pos.Y = y + Origin.Y;
-                yield return PatternSource.GetValue(pos);
+                pos.X = x;
+                pos.Y = y;
+                yield return GetValue(pos);
             }
         }
 	}
-
-	// Non-generic version (for compatibility)
-	//IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     public int GetEntropy(Vector2I pos) {
         int mask = GetValue(pos);
@@ -291,7 +296,65 @@ public class Pattern {
         return storedVector;
     }
 
+    public override string ToString()
+    {
+        string line = "";
+        Vector2I pos = new();
+        for (int y = 0; y < Size; y++) {
+            for (int x = 0; x < Size; x++) {
+                pos.X = x;
+                pos.Y = y;
+                line += GetValue(pos) + "   ";
+            }
+            line += "\n";
+        }
+        return line;
+    }
+
 }
 
+
+public class PatternSet
+{
+    private bool _unobserved = true;
+    public bool IsUnobserved { get {return _unobserved;} }
+    private HashSet<Pattern> internalSet = new();
+
+    public int Count => internalSet.Count;
+
+    public void Add(Pattern pattern) {
+        internalSet.Add(pattern);
+        _unobserved = false;
+    }
+
+    public void Clear() {
+        internalSet.Clear();
+        _unobserved = true;
+    }
+
+    public void UnionWith(PatternSet other) {
+        internalSet.UnionWith(other.internalSet);
+        _unobserved = false;
+    }
+    public void UnionWith(IEnumerable<Pattern> other) {
+        internalSet.UnionWith(other);
+        _unobserved = false;
+    }
+
+    public void IntersectWith(PatternSet other) {
+        internalSet.IntersectWith(other.internalSet);
+        _unobserved = false;
+    }
+    public void IntersectWith(IEnumerable<Pattern> other) {
+        internalSet.IntersectWith(other);
+        _unobserved = false;
+    }
+
+    public IEnumerator<Pattern> GetEnumerator() {
+        foreach (Pattern p in internalSet) {
+            yield return p;
+        }
+    }
+}
 
 }
