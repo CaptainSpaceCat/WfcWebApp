@@ -15,9 +15,6 @@
         <li>Dimensions (pixels): (@inputWidth, @inputHeight)</li>
         <li>
             Number of unique colors: @wfcPalette.colorMapping.Count
-            @if (!wfcPalette.colorMapping.IsValid()) {
-                <p>Too many! Maximum of 32</p>
-            }
         </li>
         <li>
             <p>Number / Weight of unique patterns: @wfcPalette.CountPatterns()</p>
@@ -37,7 +34,7 @@
         <li><button @onclick="OnPreprocess">Preprocess</button></li>
     </ul>
 
-    @if (wfcPalette.colorMapping.IsValid()) {
+    @if (true) {
         <p>
             <label>
                 Output width:

@@ -35,7 +35,6 @@ public class PatternEncodingTrie
             }
             curr = curr.GetChild(tileId);
             if (curr == null) {
-                Console.WriteLine($"Error in the encoding trie, analyzing direction {direction} for pattern \n{template}");
                 yield break; // if we find null on the way through this pattern, we know we have a contradiction
             }
         }

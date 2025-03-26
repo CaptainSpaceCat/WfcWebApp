@@ -147,10 +147,7 @@ public class WfcPalette : IPatternSource {
 
 
 public class ColorMapping {
-    const int MAX_UNIQUE_COLORS = 32;
     public int Count = 0;
-
-    public ColorRGBA DefaultColor => MaskToColor(~0);
 
     private readonly Dictionary<int, ColorRGBA> maskToColor = new();
     private readonly Dictionary<ColorRGBA, int> colorToMask = new();
@@ -164,46 +161,18 @@ public class ColorMapping {
         maskToColor.Clear();
         foreach (ColorRGBA color in imageData.GetAllColors()) {
             if (!colorToMask.ContainsKey(color)) {
-                if (Count < MAX_UNIQUE_COLORS) {
-                    // if we still have room in the palette, add the color <-> mask pair
-                    int mask = 1 << Count;
-                    colorToMask[color] = mask;
-                    maskToColor[mask] = color;
-                }
-                // keep counting no matter what, so we can see how many excess colors there are, if any
+                colorToMask[color] = Count;
+                maskToColor[Count] = color;
                 Count++;
             }
         }
     }
 
-    // after populating from image, call this function to see if the image didn't exceed the max unique colors
-    public bool IsValid() {
-        return Count <= MAX_UNIQUE_COLORS;
-    }
-
-    public ColorRGBA MaskToColor(int mask) {
-        if (mask == 0) {
-            // This mask is a contradiction!
-            // Let's choose to render these as bright red.
-            return new ColorRGBA(255, 100, 0, 255);
+    public ColorRGBA MaskToColor(int id) {
+        if (maskToColor.TryGetValue(id, out ColorRGBA c)) {
+            return c;
         }
-
-        int r = 0, g = 0, b = 0, a = 0;
-        int count = 0;
-        for (int i = 0; i < MAX_UNIQUE_COLORS; i++) {
-            int m = mask & (1 << i);
-            if (m != 0 && maskToColor.TryGetValue(m, out ColorRGBA c)) {
-                r += c.R;
-                g += c.G;
-                b += c.B;
-                a += c.A;
-                count++;
-            }
-        }
-        if (count > 0) {
-            return new ColorRGBA((byte)(r/count), (byte)(g/count), (byte)(b/count), (byte)(a/count));
-        }
-        throw new IndexOutOfRangeException($"Mask {mask} not found in palette.");
+        throw new IndexOutOfRangeException($"Color with ID {id} not found in palette.");
     }
 
     public int ColorToMask(ColorRGBA color) {

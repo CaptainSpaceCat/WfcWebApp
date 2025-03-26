@@ -1,0 +1,193 @@
+@page "/texture"
+@inject IJSRuntime JS
+@using WfcWebApp.Wfc
+
+<PageTitle>Texture Generator</PageTitle>
+
+<h3>Texture Generator</h3>
+<p>
+    Generate seamless, wrapping textures of any size using wave function collapse!<br/>
+    Upload a suitable input texture below:
+</p>
+
+<InputFile OnChange="@OnFileChange" accept="image/*" />
+
+@if (pageState >= 1) {
+    <p>
+        <img src="@imageDataUrl" alt="Failed to display image." 
+            style="display: block; margin-top: 10px; width: @(wfcPalette.Width*imageDisplayScale)px;
+            height: @(wfcPalette.Height*imageDisplayScale)px; image-rendering: pixelated;">
+        <br/>
+        Dimensions (pixels): (@wfcPalette.Width, @wfcPalette.Height)
+        @if (wfcPalette.Width > maxRecommendedInputSize || wfcPalette.Height > maxRecommendedInputSize) {
+            <span style="color: darkorange;">
+                — Large input! WFC works best with patterns from smaller images (≤ @maxRecommendedInputSize px).  
+                Proceeding is fine, but results may be less coherent or slower to generate.
+            </span>
+        }
+        <br/>
+        Number of unique colors: @wfcPalette.colorMapping.Count
+        @if (wfcPalette.colorMapping.Count > maxUniqueColors)
+        {
+            <span style="color: red;">
+                — High color diversity! Overlapping patterns may become rare, which often leads to incoherent or overly exact outputs.  
+		        Consider simplifying the input to reduce the number of distinct colors (≤ @maxUniqueColors recommended).
+            </span>
+        }
+        <br/>
+        Wraparound Mode:
+        <input type="checkbox" @bind="wfcPalette.Wrap" />
+        <br/>
+        Include Rotations:
+        <input type="checkbox" @bind="wfcPalette.RotationalSymmetry" />
+
+    </p>
+
+    <p>
+        <label>
+            Output width:
+            <input type="number" @bind="outputShape.X" />
+        </label>
+        <label>
+            Output height:
+            <input type="number" @bind="outputShape.Y" />
+        </label>
+        <br/>
+        <button @onclick="OnGenerate" disabled="@(generateState == 1)">Generate</button>
+    </p>
+
+    <div style="display: flex; gap: 10px;">
+    <canvas id="outputCanvas" width="@outputShape.X" height="@outputShape.Y"
+        style="border: 4px solid black; width: @(outputShape.X*6)px; height: @(outputShape.Y*6)px; image-rendering: pixelated;
+        @(generateState > 0 ? "display: block;" : "display: none;")">
+        </canvas>
+        <canvas id="entropyCanvas" width="@outputShape.X" height="@outputShape.Y"
+        style="border: 4px solid black; width: @(outputShape.X*6)px; height: @(outputShape.Y*6)px; image-rendering: pixelated;
+        @(generateState > 0 ? "display: block;" : "display: none;")">
+        </canvas>
+    </div>
+    
+}
+
+@code {
+    const int maxUniqueColors = 32;
+    const int maxRecommendedInputSize = 64;
+    const int imageDisplayScale = 6;
+
+    private ImageDataRaw? displayCanvasData, entropyCanvasData;
+
+    private WfcPalette wfcPalette;
+    private WfcGenerator wfcGenerator = new();
+    private WfcWave wfcWave = new();
+    int pageState = 0;
+    string imageDataUrl = "";
+
+    Vector2I outputShape = Vector2I.One * 32;
+    int generateState = 0;
+
+    public async Task OnGenerate() {
+        generateState = 1;
+        wfcWave.Clear();
+        wfcWave.Wrap = true; //just wrap always
+        wfcWave.boundaryCorner = Vector2I.Zero;
+        wfcWave.boundaryShape = outputShape;
+        displayCanvasData = new ImageDataRaw(outputShape.X, outputShape.Y);
+        entropyCanvasData = new ImageDataRaw(outputShape.X, outputShape.Y);
+
+        wfcPalette.Preprocess();
+
+        int c = 0;
+        while (wfcGenerator.RunSingle(MathUtils.GridEnumerator(outputShape.X, outputShape.Y))) {
+            if (c%1 == 0) {
+                await RenderWaveToImages();
+            }
+            c++;
+        }
+        await RenderWaveToImages();
+
+        generateState = 2;
+    }
+
+
+    private async Task RenderWaveToImages() {
+        WriteWaveContentToImage(wfcWave, displayCanvasData);
+        await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", "outputCanvas", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
+        WriteWaveEntropyToImage(wfcWave, entropyCanvasData);
+        await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", "entropyCanvas", displayCanvasData.Width, displayCanvasData.Height, entropyCanvasData.PixelData);
+        await Task.Delay(20); //delay briefly to let the image get rendered
+    }
+
+    private async Task OnFileChange(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) {
+            return;
+        }
+        var buffer = new byte[file.Size];
+        await file.OpenReadStream().ReadAsync(buffer);
+
+        // Convert to Base64
+        imageDataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
+
+        ImageDataRaw imageData = await JS.InvokeAsync<ImageDataRaw>("getImagePixels", imageDataUrl);
+        wfcPalette = new WfcPalette(imageData);
+
+        wfcGenerator.SetDependencies(wfcWave, wfcPalette, (int)DateTime.UtcNow.Ticks);
+
+        //if the file ends up good
+        pageState = 1;
+    }
+
+    public void WriteWaveEntropyToImage(WfcWave wave, ImageDataRaw canvas)
+    {
+        int maxEntropy = wave.GetMaxObservedEntropy();
+        Vector2I pos = new();
+        for (int x = 0; x < canvas.Width; x++)
+        {
+            for (int y = 0; y < canvas.Height; y++)
+            {
+                pos.X = x;
+                pos.Y = y;
+                ColorRGBA color = new();
+                color.A = 255;
+                if (wave.IsUnobserved(pos))
+                {
+                    color.R = color.G = color.B = 127;
+                }
+                else if (wave.IsContradiction(pos))
+                {
+                    color.R = color.G = color.B = 50;
+                }
+                else if (wave.IsCollapsed(pos))
+                {
+                    color.R = color.G = color.B = 200;
+                }
+                else
+                {
+                    float percent = MathUtils.InverseLerp(wave.GetEntropy(pos), 1, maxEntropy);
+                    color = ColorGradient.Rainbow.Sample(percent);
+                    
+                }
+                canvas.SetPixel(x, y, color);
+            }
+        }
+    }
+
+    public void WriteWaveContentToImage(WfcWave wave, ImageDataRaw canvas) {
+        Swatch swatch = new Swatch(canvas.Width, canvas.Height, false);
+        for (int x = 0; x < canvas.Width; x++) {
+            for (int y = 0; y < canvas.Height; y++) {
+                Vector2I pos = new Vector2I(x, y);
+                foreach (Pattern pattern in wave.EnumeratePatternSet(pos)) {
+                    swatch.PaintPattern(pattern, pos, wfcPalette.colorMapping);
+                }
+            }
+        }
+
+        for (int x = 0; x < canvas.Width; x++) {
+            for (int y = 0; y < canvas.Height; y++) {
+                canvas.SetPixel(x, y, swatch.GetColorAt(x, y));
+            }
+        }
+    }
+}

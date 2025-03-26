@@ -177,6 +177,11 @@ public struct ColorRGBA
 			(byte)(a.A + (b.A - a.A) * t)
 		);
 	}
+
+    public override string ToString()
+    {
+        return $"Color({R}, {G}, {B}, {A})";
+    }
 }
 
 public class ColorGradient
@@ -293,114 +298,65 @@ public class ImageDataRaw
 }
 
 
-
-public class BitmaskWindow
+public class Swatch
 {
-    public int Size { get; }
+    public int Width, Height;
 
-    private int[,] data;
+    private int[,,] colorData;
+    private int[,] weights;
+    public readonly bool Wrap;
 
-    public BitmaskWindow(int _Size, int init_mask = 0)
-    {
-        Size = _Size;
-        data = new int[Size, Size];
-        for (int x = 0; x < Size; x++) {
-            for (int y = 0; y < Size; y++) {
-                data[x,y] = init_mask;
-            }
-        }
+    public Swatch(int w, int h, bool wrap = false) {
+        Width = w;
+        Height = h;
+        colorData = new int[w,h,4];
+        weights = new int[w,h];
+        Wrap = wrap;
     }
 
-    public int Get(Vector2I pos) {
-        return data[pos.X, pos.Y];
+    public ColorRGBA GetColorAt(int x, int y) {
+        if (weights[x,y] == 0) {
+            return new ColorRGBA();
+        }
+        byte R = (byte)(colorData[x,y,0]/weights[x,y]);
+        byte G = (byte)(colorData[x,y,1]/weights[x,y]);
+        byte B = (byte)(colorData[x,y,2]/weights[x,y]);
+        byte A = (byte)(colorData[x,y,3]/weights[x,y]);
+        return new ColorRGBA(R, G, B, A);
     }
 
-    public void AppendAND(Pattern view) {
-        if (view.Size != Size) {
-            throw new IndexOutOfRangeException("Size of view does not match Size of window.");
-        }
-        Vector2I pos = new();
-        for (int x = 0; x < Size; x++) {
-            for (int y = 0; y < Size; y++) {
-                pos.X = x;
-                pos.Y = y;
-                data[x,y] &= view.GetValue(pos);
-            }
-        }
-    }
-
-    public void AppendOR(Pattern view) {
-        if (view.Size != Size) {
-            throw new IndexOutOfRangeException("Size of view does not match Size of window.");
-        }
-        Vector2I pos = new();
-        for (int x = 0; x < Size; x++) {
-            for (int y = 0; y < Size; y++) {
-                pos.X = x;
-                pos.Y = y;
-                data[x,y] |= view.GetValue(pos);
-            }
-        }
-    }
-
-    public bool AnyEqual(byte mask) {
-        for (int x = 0; x < Size; x++) {
-            for (int y = 0; y < Size; y++) {
-                if (data[x,y] == mask) {
-                    return true;
+    public void PaintPattern(Pattern pattern, Vector2I pos, ColorMapping colorMap) {
+        for (int x = 0; x < pattern.Size; x++) {
+            for (int y = 0; y < pattern.Size; y++) {
+                int mask = pattern.GetValue(new Vector2I(x, y));
+                ColorRGBA color = colorMap.MaskToColor(mask);
+                Vector2I offset = new Vector2I(x + pos.X, y + pos.Y);
+                if (offset.X < 0 || offset.Y < 0 || offset.X >= Width || offset.Y >= Height) {
+                    if (!Wrap) {
+                        //skip painting it if it's gonna be off-screen
+                        continue;
+                    }
+                    offset.X = ((offset.X % Width) + Width) % Width;
+                    offset.Y = ((offset.Y % Height) + Height) % Height;
                 }
+                colorData[offset.X, offset.Y, 0] += color.R;
+                colorData[offset.X, offset.Y, 1] += color.G;
+                colorData[offset.X, offset.Y, 2] += color.B;
+                colorData[offset.X, offset.Y, 3] += color.A;
+                weights[offset.X, offset.Y]++;
             }
         }
-        return false;
     }
 
-
-}
-
-
-
-public class PatternMask
-{
-	private ulong[] bits;
-
-	public PatternMask(int Size)
-	{
-		bits = new ulong[(Size + 63) / 64]; // Round up
-	}
-
-	public void Set(int index)
-	{
-		bits[index / 64] |= (1UL << (index % 64));
-	}
-
-	public void Clear(int index)
-	{
-		bits[index / 64] &= ~(1UL << (index % 64));
-	}
-
-	public bool Get(int index)
-	{
-		return (bits[index / 64] & (1UL << (index % 64))) != 0;
-	}
-
-	public void And(PatternMask other)
-	{
-		for (int i = 0; i < bits.Length; i++)
-			bits[i] &= other.bits[i];
-	}
-
-    public int GetEntropy()
-    {
-        // count up and return the number of 1's in the mask
-        int count = 0;
-        foreach (ulong value in bits)
-        {
-            count += BitOperations.PopCount(value);
+    public ImageDataRaw OutputToImage() {
+        ImageDataRaw output = new(Width, Height);
+        for (int x = 0; x < Width; x++) {
+            for (int y = 0; y < Height; y++) {
+                output.SetPixel(x, y, GetColorAt(x, y));
+            }
         }
-        return count;
+        return output;
     }
-
 }
-
 
 }
