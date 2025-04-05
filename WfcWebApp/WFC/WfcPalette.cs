@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 
 namespace WfcWebApp.Wfc
 {
@@ -15,21 +14,28 @@ public class WfcPalette : IPatternSource {
 
     public readonly ColorMapping colorMapping = new();
 
-    
+    private List<Pattern> PatternIndexer = new();
 	private PatternEncodingTrie? PatternTrie;
     private PatternEncodingTrie?[] DirectionalTries = new PatternEncodingTrie?[4];
 
     public IEnumerable<Pattern> EnumerateMatchingPatterns(Pattern template, int direction) {
+        TimerUtility.StartTimer("EnumerateMatchingPatterns");
         if (RotationalSymmetry) { //easy case, all patterns are stored in one big trie
             foreach (Pattern pattern in PatternTrie.MatchingPatterns(template, direction)) {
                 //Console.WriteLine(pattern);
+                TimerUtility.StopTimer("EnumerateMatchingPatterns");
                 yield return pattern;
+                TimerUtility.StartTimer("EnumerateMatchingPatterns");
             }
         } else { //slightly harder case, patterns are stored in separate tries based on sampling direction
             foreach (Pattern pattern in DirectionalTries[direction].MatchingPatterns(template, direction)) {
+                TimerUtility.StopTimer("EnumerateMatchingPatterns");
                 yield return pattern;
+                TimerUtility.StartTimer("EnumerateMatchingPatterns");
             }
         }
+        TimerUtility.StopTimer("EnumerateMatchingPatterns");
+        //TimerUtility.PrintElapsed("EnumerateMatchingPatterns");
     }
 
     public Vector2I CountPatterns() {
@@ -72,6 +78,8 @@ public class WfcPalette : IPatternSource {
 
     public void Preprocess() {
         ClearTries();
+        PatternIndexer.Clear();
+        int pattern_index = 0;
         if (RotationalSymmetry) {
             if (PatternTrie == null) {
                 PatternTrie = new();
@@ -81,9 +89,16 @@ public class WfcPalette : IPatternSource {
                 for (int r = 0; r < 4; r++) {
                     // the "rotated copy" isn't actually a deep copy of the underlying data,
                     // rather a copy of the reference view object with a new rotation
-                    PatternTrie.AddPattern(pattern.GetRotatedCopy(r));
+                    Pattern newPattern = pattern.GetRotatedCopy(r);
+                    newPattern.Index = pattern_index;
+                    if (PatternTrie.AddPattern(newPattern)) {
+                        // if we indeed do create a new pattern, increment the index
+                        pattern_index++;
+                        PatternIndexer.Add(newPattern);
+                    }
                 }
             }
+            Console.WriteLine($"pattern indexer has {PatternIndexer.Count} unique patterns");
             // recursively init the weights of the nodes in the trie (at every level)
             PatternTrie.InitializeWeight();
         } else {
@@ -94,8 +109,9 @@ public class WfcPalette : IPatternSource {
             }
             foreach(Pattern pattern in GetAllPatterns()) {
                 for (int r = 0; r < 4; r++) {
-                    Pattern rotatedPattern = pattern.GetRotatedCopy(r);
-                    DirectionalTries[rotatedPattern.Rotation].AddPattern(rotatedPattern);
+                    Pattern newPattern = pattern.GetRotatedCopy(r);
+                    newPattern.Index = pattern_index++;
+                    DirectionalTries[newPattern.Rotation].AddPattern(newPattern);
                 }
             }
             for (int r = 0; r < 4; r++) {
@@ -132,7 +148,11 @@ public class WfcPalette : IPatternSource {
     }
 
     public Pattern GetPattern(Vector2I pos, int size, int rotation=0){
-        return new Pattern(this, pos, size, rotation);
+        return new Pattern(this, pos, size, 0, rotation);
+    }
+
+    public Pattern PatternFromIndex(int index) {
+        return PatternIndexer[index];
     }
 
     public Pattern GetRandomPattern() {

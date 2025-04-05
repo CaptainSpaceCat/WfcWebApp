@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Numerics;
 
 namespace WfcWebApp.Wfc
 {
@@ -9,12 +10,12 @@ public class PatternEncodingTrie
 
     private TrieNode root = new();
 
-    public void AddPattern(Pattern pattern) {
+    public bool AddPattern(Pattern pattern) {
         TrieNode curr = root;
         foreach (int tileId in pattern) {
             curr = curr.GetOrAddChild(tileId);
         }
-        curr.AddLeaf(pattern);
+        return curr.AddLeaf(pattern);
     }
 
     public void InitializeWeight() {
@@ -142,12 +143,15 @@ public class PatternEncodingTrie
 
         // Called once we fully search along a pattern and get to it's node in the Trie
         // Creates a new Leaf if none exists, and increments its weight either way
-        public void AddLeaf(Pattern pattern) {
+        public bool AddLeaf(Pattern pattern) {
+            bool new_leaf = false;
             if (Leaf == null) {
                 Leaf = pattern;
+                new_leaf = true;
             }
             //add weight to this leaf (pattern)
             Leaf.Weight++;
+            return new_leaf;
         }
 
         public int CountLeaves() {
@@ -191,12 +195,15 @@ public class Pattern {
     private IPatternSource PatternSource;
     public int Weight;
 
-    public Pattern(IPatternSource _Source, Vector2I _Origin, int _Size, int _Rotation = 0, int weight = 0) {
+    public int Index;
+
+    public Pattern(IPatternSource _Source, Vector2I _Origin, int _Size, int _Index, int _Rotation = 0, int _Weight = 0) {
         PatternSource = _Source;
         Origin = _Origin;
         Size = _Size;
         Rotation = _Rotation;
-        Weight = weight;
+        Weight = _Weight;
+        Index = _Index;
     }
 
     public override int GetHashCode()
@@ -233,7 +240,7 @@ public class Pattern {
 
     public Pattern GetRotatedCopy(int amount) {
         int newRotation = (((Rotation + amount) % 4) + 4) % 4;
-        return new Pattern(PatternSource, Origin, Size, newRotation, Weight);
+        return new Pattern(PatternSource, Origin, Size, Index, newRotation, Weight);
     }
 
     public int GetValue(Vector2I pos) {
@@ -355,5 +362,89 @@ public class PatternSet
         }
     }
 }
+
+public class SparsePatternSet
+{
+    private bool _unobserved = true;
+    public bool IsUnobserved { get {return _unobserved;} }
+
+    private Dictionary<int, ulong> chunks = new(); // Maps chunk indices to their bitmasks
+
+    public int Count => chunks.Values.Sum(chunk => BitOperations.PopCount(chunk));
+
+    public void Add(int patternIndex)
+    {
+        int chunkIndex = patternIndex / 64;
+        int bitIndex = patternIndex % 64;
+
+        if (!chunks.ContainsKey(chunkIndex))
+            chunks[chunkIndex] = 0;
+
+        chunks[chunkIndex] |= 1UL << bitIndex;
+        _unobserved = false;
+    }
+
+    public void Clear() {
+        chunks.Clear();
+        _unobserved = true;
+    }
+
+    public bool Contains(int patternIndex)
+    {
+        int chunkIndex = patternIndex / 64;
+        int bitIndex = patternIndex % 64;
+
+        return chunks.TryGetValue(chunkIndex, out ulong chunk) && ((chunk & (1UL << bitIndex)) != 0);
+    }
+
+    public void UnionWith(SparsePatternSet other)
+    {
+        foreach (var kvp in other.chunks)
+        {
+            if (chunks.ContainsKey(kvp.Key))
+                chunks[kvp.Key] |= kvp.Value;
+            else
+                chunks[kvp.Key] = kvp.Value;
+        }
+        _unobserved = false;
+    }
+
+    public void IntersectWith(SparsePatternSet other)
+    {
+        var keysToRemove = new List<int>();
+
+        foreach (var kvp in chunks)
+        {
+            if (other.chunks.TryGetValue(kvp.Key, out ulong otherChunk))
+            {
+                chunks[kvp.Key] &= otherChunk;
+
+                if (chunks[kvp.Key] == 0)
+                    keysToRemove.Add(kvp.Key);
+            }
+            else
+            {
+                keysToRemove.Add(kvp.Key);
+            }
+        }
+
+        foreach (int key in keysToRemove)
+            chunks.Remove(key);
+        
+        _unobserved = false;
+    }
+
+    public IEnumerator<int> GetEnumerator() {
+        foreach (var kvp in chunks) {
+            int base_index = kvp.Key * 64;
+            ulong mask = kvp.Value;
+            while (mask != 0) {
+                yield return base_index + BitOperations.TrailingZeroCount(mask);
+                mask &= mask - 1; //clear lowest active bit
+            }
+        }
+    }
+}
+
 
 }

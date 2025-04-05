@@ -1,34 +1,12 @@
-using System.Reflection.Emit;
 
 namespace WfcWebApp.Wfc
 {
 
 
-/*
-The purpose of this class is to run the WFC algorithm at specified positions
-For this game, we want to give the generator a position and a radius,
-and have it generate all tiles in that radius, not overwriting any existing tiles,
-and clearing any existing tiles outside of the larger secondary radius (defined below)
-
-Additionally, to avoid getting stuck in a "sweep" (backprop keeps generating the same similar subset of the input)
-We should have a secondary radius larger than the first. Between the first radius and the second,
-We will generate a single cycle at every position whose coordinates are both multiples of 20 (or around that)
-This ensures that the algorithm has time to "preload" some of the material at periodic intervals before merging with the main "bubble"
-*/
-
 public class WfcGenerator
 {
 	public WfcPalette wfcPalette;
 	public WfcWave wfcWave;
-
-
-	public int convSize = 3;
-	public bool rotationsEnabled = true;
-
-	public float smallRadius;
-	public float largeRadius;
-	private int preloadFrequency = 20; // Grid spacing for preloading WFC generation in larger radius
-	private float randomEpsilon = 0;//0.05f; // Probability of collapsing a random tile instead of the one with the lowest entropy
 	private int backpropHorizon = -1; // Max number of backprop iterations before moving on
 	private int backpropMaxDistance = -1; // backprop won't continue past this radius around each collapse position
 	private int backpropEntropyThreshold = 30; //maximum number of unique patterns we're willing to analyze during backprop
@@ -42,31 +20,14 @@ public class WfcGenerator
 		wfcPalette = palette;
 	}
 
-	public bool RunSingle(IEnumerable<Vector2I> positionIterator) {
-		if (TrySelectNextCollapsePosition(out Vector2I collapse_pos, positionIterator)) {
+	public bool RunSingle() {
+		if (wfcWave.GetLeastEntropyPosition(out var collapse_pos)) {
 			Console.WriteLine($"Selected position {collapse_pos} with entropy {wfcWave.GetEntropy(collapse_pos)} for collapse.");
 			SingleGenerationCycleBounded(collapse_pos);
 			return true;
 		}
 		Console.WriteLine($"Failed to select collapse position. Perhaps it's all collapsed?");
 		return false;
-	}
-
-
-	private bool TrySelectNextCollapsePosition(out Vector2I collapse_pos, IEnumerable<Vector2I> positionIterator) {
-		bool success;
-		if (RandomUtils.Random.NextDouble() < randomEpsilon) {
-			//if we roll under epsilon, choose the next tile to collaps uniformly at random
-			success = wfcWave.GetRandomUncollapsedPosition(out collapse_pos, positionIterator);
-		} else {
-			// find tile with smallest nonzero entropy
-			success = wfcWave.GetLeastEntropyPosition(out collapse_pos, positionIterator);
-		}
-		if (!success) {
-			// If we fail to find a single uncollapsed tile, we are done generating within the circle and can exit
-			return false;
-		}
-		return true;
 	}
 
 	RandomUtils.WeightedKeyCounter<Pattern> keyCounter = new();
@@ -83,15 +44,15 @@ public class WfcGenerator
 			// ROUGH APPROXIMATION
 			// just do a single unweighted monte carlo style rollout and return what you get
 			Pattern chosenPattern = wfcPalette.GetRandomPattern();
-			wfcWave.GetOrCreatePatternSet(collapse_pos, out PatternSet waveSet);
-			waveSet.Add(chosenPattern);
+			wfcWave.GetOrCreatePatternSet(collapse_pos, out SparsePatternSet waveSet);
+			waveSet.Add(chosenPattern.Index);
 
 			PerformBackpropBounded(collapse_pos);
 
 		} else if (wfcWave.IsUncollapsed(collapse_pos)) { // this tile can still be collapsed
-
 			keyCounter.Clear();
-			foreach (Pattern pattern in wfcWave.EnumeratePatternSet(collapse_pos)) {
+			foreach (int index in wfcWave.EnumeratePatternSet(collapse_pos)) {
+				Pattern pattern = wfcPalette.PatternFromIndex(index);
 				// each will have a weight in the trie
 				// need to make a dict of pattern -> weight, populate it pattern by pattern, then call getweightedrandomkey
 				keyCounter.AddWeightedKey(pattern, pattern.Weight);
@@ -100,13 +61,17 @@ public class WfcGenerator
 			keyCounter.Clear();
 			
 			// empty the available patterns at the collapse pos, and add back in only the single pattern we chose
-			wfcWave.GetOrCreatePatternSet(collapse_pos, out PatternSet waveSet);
+			wfcWave.GetOrCreatePatternSet(collapse_pos, out SparsePatternSet waveSet);
 			waveSet.Clear(); // even if the waveSet was just created and is empty, this is still fine
-			waveSet.Add(chosenPattern);
+			waveSet.Add(chosenPattern.Index);
 			// waveSet is a reference to the actual hashset stored in the wfcWave object, so changing it here should be reflected in the wave
 
+
+			TimerUtility.StartTimer("Full Backprop");
 			// perform backprop within the specified radius of the collpase pos
 			PerformBackpropBounded(collapse_pos);
+			TimerUtility.StopTimer("Full Backprop");
+			TimerUtility.PrintElapsed("Full Backprop");
 		}
 	}
 
@@ -131,9 +96,12 @@ public class WfcGenerator
 				// pop least that position from the fringe
 				backpropFringe.Remove(backprop_pos);
 
+				TimerUtility.StartTimer("SingleBackpropStep");
 				// perform backprop at that position
 				SingleBackpropStep(backprop_pos, boundary);
 				// based on the rules of backprop, the fringe may have been expanded
+				TimerUtility.StopTimer("SingleBackpropStep");
+				//TimerUtility.PrintElapsed("SingleBackpropStep");
 			} else {
 				// if we don't find a valid least entropy position
 				// it means everything remaining in the fringe is a contradiction
@@ -156,14 +124,19 @@ public class WfcGenerator
 			//Console.WriteLine($"backpropping at neighbor {neighbor_pos}");
 			int direction = backprop_pos.DirectionTo(neighbor_pos);
 
-			PatternSet unionPatternSet = new();
+			SparsePatternSet matchPatternSet = new();
 			//for each pattern that fits at backprop_pos
-			foreach (Pattern backpropPattern in wfcWave.EnumeratePatternSet(backprop_pos)) {
+			foreach (int index in wfcWave.EnumeratePatternSet(backprop_pos)) {
+				Pattern backpropPattern = wfcPalette.PatternFromIndex(index);
 				// get all patterns that fit at neighbor_pos assuming we apply backpropPattern at backprop_pos
 				// aggregate them into the union set
-				//Console.WriteLine($"Trying to match pattern: \n{backpropPattern} in direction {direction}");
-				unionPatternSet.UnionWith(wfcPalette.EnumerateMatchingPatterns(backpropPattern, direction));
-				if (unionPatternSet.Count > backpropEntropyThreshold) {
+				//Console.WriteLine($"Using index {index} to match pattern: \n{backpropPattern} in direction {direction}");
+				//unionPatternSet.UnionWith(wfcPalette.EnumerateMatchingPatterns(backpropPattern, direction));
+				foreach (Pattern match in wfcPalette.EnumerateMatchingPatterns(backpropPattern, direction)) {
+					matchPatternSet.Add(match.Index);
+				}
+
+				if (matchPatternSet.Count > backpropEntropyThreshold) {
 					// Optimization:
 					// these pattern sets we're storing are sets of patterns that fit at each position in the output
 					// this implies that the more patterns we store, the more options we have at that spot
@@ -178,6 +151,7 @@ public class WfcGenerator
 				}
 			}
 
+			TimerUtility.StartTimer("end section");
 			bool changed_flag = false;
 			// check the set of patterns that fit at that neighbor already
 			if (!wfcWave.GetOrCreatePatternSet(neighbor_pos, out var wavePatternSet)) {
@@ -188,14 +162,14 @@ public class WfcGenerator
 			if (!wavePatternSet.IsUnobserved) {
 				// there's already a set of patterns here, intersect it with the union set we just constructed
 				int original_count = wavePatternSet.Count;
-				wavePatternSet.IntersectWith(unionPatternSet);
+				wavePatternSet.IntersectWith(matchPatternSet);
 				if (wavePatternSet.Count != original_count) {
 					changed_flag = true;
 				}
 			} else {
 				// if this set is newly created, just fill it with the values from the union set
 				// this operation represents restricting the amount of patterns at this spot from all of them down to just this set
-				wavePatternSet.UnionWith(unionPatternSet);
+				wavePatternSet.UnionWith(matchPatternSet);
 				changed_flag = true;
 			}
 
@@ -208,7 +182,8 @@ public class WfcGenerator
 				//if anything changed, add this neighbor to the fringe to perform backprop on it!
 				TryAddToBackpropFringe(neighbor_pos, boundary);
 			}
-
+			TimerUtility.StopTimer("end section");
+			//TimerUtility.PrintElapsed("end section");
 		}
 	}
 

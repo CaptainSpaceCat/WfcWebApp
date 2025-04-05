@@ -2,6 +2,8 @@
 @inject IJSRuntime JS
 @using WfcWebApp.Wfc
 
+<script src="imageUtils.js"></script>
+
 <PageTitle>Texture Generator</PageTitle>
 
 <h3>Texture Generator</h3>
@@ -75,7 +77,6 @@
     const int imageDisplayScale = 6;
 
     private ImageDataRaw? displayCanvasData, entropyCanvasData;
-
     private WfcPalette wfcPalette;
     private WfcGenerator wfcGenerator = new();
     private WfcWave wfcWave = new();
@@ -97,7 +98,7 @@
         wfcPalette.Preprocess();
 
         int c = 0;
-        while (wfcGenerator.RunSingle(MathUtils.GridEnumerator(outputShape.X, outputShape.Y))) {
+        while (wfcGenerator.RunSingle()) {
             if (c%1 == 0) {
                 await RenderWaveToImages();
             }
@@ -110,7 +111,7 @@
 
 
     private async Task RenderWaveToImages() {
-        WriteWaveContentToImage(wfcWave, displayCanvasData);
+        WriteWaveContentToImage(wfcWave, wfcPalette, displayCanvasData);
         await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", "outputCanvas", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
         WriteWaveEntropyToImage(wfcWave, entropyCanvasData);
         await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", "entropyCanvas", displayCanvasData.Width, displayCanvasData.Height, entropyCanvasData.PixelData);
@@ -173,12 +174,13 @@
         }
     }
 
-    public void WriteWaveContentToImage(WfcWave wave, ImageDataRaw canvas) {
+    public void WriteWaveContentToImage(WfcWave wave, WfcPalette palette, ImageDataRaw canvas) {
         Swatch swatch = new Swatch(canvas.Width, canvas.Height, false);
         for (int x = 0; x < canvas.Width; x++) {
             for (int y = 0; y < canvas.Height; y++) {
                 Vector2I pos = new Vector2I(x, y);
-                foreach (Pattern pattern in wave.EnumeratePatternSet(pos)) {
+                foreach (int index in wave.EnumeratePatternSet(pos)) {
+                    Pattern pattern = palette.PatternFromIndex(index);
                     swatch.PaintPattern(pattern, pos, wfcPalette.colorMapping);
                 }
             }

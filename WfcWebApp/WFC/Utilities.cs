@@ -1,9 +1,82 @@
 using System.Drawing;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 
 namespace WfcWebApp.Wfc
 {
+
+
+
+public static class TimerUtility
+{
+	private static readonly Dictionary<string, Stopwatch> Timers = new();
+
+	public static void StartTimer(string timerName)
+	{
+		if (!Timers.ContainsKey(timerName))
+		{
+			Timers[timerName] = new Stopwatch();
+		}
+		else
+		{
+			Timers[timerName].Reset();
+		}
+
+		Timers[timerName].Start();
+	}
+
+	public static void StopTimer(string timerName)
+	{
+		if (Timers.TryGetValue(timerName, out var stopwatch))
+		{
+			stopwatch.Stop();
+		}
+		else
+		{
+			throw new ArgumentException($"Timer '{timerName}' does not exist. Did you forget to start it?");
+		}
+	}
+
+    public static void ContinueTimer(string timerName)
+	{
+		if (!Timers.ContainsKey(timerName))
+		{
+			throw new ArgumentException($"Timer '{timerName}' does not exist. Did you forget to start it?");
+		}
+		else
+		{
+			Timers[timerName].Start();
+		}
+	}
+
+	public static TimeSpan GetElapsed(string timerName)
+	{
+		if (Timers.TryGetValue(timerName, out var stopwatch))
+		{
+			return stopwatch.Elapsed;
+		}
+		else
+		{
+			throw new ArgumentException($"Timer '{timerName}' does not exist. Did you forget to start it?");
+		}
+	}
+
+	public static void PrintElapsed(string timerName)
+	{
+		var elapsed = GetElapsed(timerName);
+		Console.WriteLine($"Timer '{timerName}' elapsed time: {elapsed.TotalMilliseconds} ms");
+	}
+
+	public static void RemoveTimer(string timerName)
+	{
+		if (Timers.ContainsKey(timerName))
+		{
+			Timers.Remove(timerName);
+		}
+	}
+}
+
 
 public static class MathUtils
 {

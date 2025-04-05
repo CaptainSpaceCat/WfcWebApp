@@ -139,13 +139,13 @@
         entropyCanvasData = new ImageDataRaw(outputWidth, outputHeight);
 
         int c = 0;
-        while (wfcGenerator.RunSingle(MathUtils.GridEnumerator(outputWidth, outputHeight))) {
-            if (c%10 == 0) {
+        while (wfcGenerator.RunSingle()) {
+            if (c%1 == 0) {
                 WriteWaveContentToImage(wfcWave, displayCanvasData);
                 await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", "outputCanvas", displayCanvasData.Width, displayCanvasData.Height, displayCanvasData.PixelData);
                 WriteWaveEntropyToImage(wfcWave, entropyCanvasData);
                 await JS.InvokeAsync<ImageDataRaw>("updateCanvasPixels", "entropyCanvas", displayCanvasData.Width, displayCanvasData.Height, entropyCanvasData.PixelData);
-                await Task.Delay(20);
+                await Task.Delay(10);
             }
             c++;
         }
@@ -200,8 +200,9 @@
         for (int x = 0; x < canvas.Width; x++) {
             for (int y = 0; y < canvas.Height; y++) {
                 Vector2I pos = new Vector2I(x, y);
-                foreach (Pattern pattern in wave.EnumeratePatternSet(pos)) {
-                    swatch.PaintPattern(pattern, pos, wfcPalette.colorMapping);
+                foreach (int index in wave.EnumeratePatternSet(pos)) {
+                    //Pattern pattern = palette.PatternFromIndex(index);
+                    //swatch.PaintPattern(pattern, pos, wfcPalette.colorMapping);
                 }
             }
         }
