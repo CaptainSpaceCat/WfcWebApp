@@ -50,6 +50,20 @@ window.initCanvasDrawing = (canvasId, width, height, scale) => {
 	});
 };
 
+window.setCanvasImage = (canvasId, imageData, palette) => {
+	const canvas = document.getElementById(canvasId);
+	const ctx = canvas.getContext('2d');
+
+	for (let y = 0; y < imageData.length; y++) {
+		for (let x = 0; x < imageData[y].length; x++) {
+			const id = imageData[y][x];
+			if (id === 0) continue; // Transparent or empty
+			ctx.fillStyle = palette[id]; // Assuming 1-based ID
+			ctx.fillRect(x, y, 1, 1);
+		}
+	}
+};
+
 function drawLine(ctx, x0, y0, x1, y1) {
 	const dx = Math.abs(x1 - x0);
 	const dy = Math.abs(y1 - y0);
@@ -70,20 +84,6 @@ window.setDrawColor = (color) => {
     currentColor = color;
 };
 
-window.setCanvasImage = (canvasId, imageData, palette) => {
-	const canvas = document.getElementById(canvasId);
-	const ctx = canvas.getContext('2d');
-
-	for (let y = 0; y < imageData.length; y++) {
-		for (let x = 0; x < imageData[y].length; x++) {
-			const id = imageData[y][x];
-			if (id === 0) continue; // Transparent or empty
-			ctx.fillStyle = palette[id]; // Assuming 1-based ID
-			ctx.fillRect(x, y, 1, 1);
-		}
-	}
-};
-
 window.getIndexedImageFromBase64 = (base64Image) => {
 	return new Promise((resolve, reject) => {
 		const img = new Image();
@@ -93,42 +93,48 @@ window.getIndexedImageFromBase64 = (base64Image) => {
 			canvas.height = img.height;
 			const ctx = canvas.getContext("2d");
 			ctx.drawImage(img, 0, 0);
-
-			const imageData = ctx.getImageData(0, 0, img.width, img.height);
-			const data = imageData.data;
-
-			const colorToId = new Map();
-			let nextId = 1;
-
-			const idArray = new Int32Array(img.width * img.height);
-
-			const pixelIdGrid = [];
-			for (let y = 0; y < img.height; y++) {
-				const row = [];
-				for (let x = 0; x < img.width; x++) {
-					const i = y * img.width + x;
-
-					const r = data[i * 4 + 0];
-					const g = data[i * 4 + 1];
-					const b = data[i * 4 + 2];
-					const a = data[i * 4 + 3];
-					
-					// Convert to hex code
-					const key = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${a.toString(16).padStart(2, '0')}`.toUpperCase();
-					if (!colorToId.has(key)) {
-						colorToId.set(key, nextId++);
-					}
-					row.push(colorToId.get(key));
-				}
-				pixelIdGrid.push(row);
-			}
-			resolve({
-				pixelIdGrid: pixelIdGrid,
-				idToColorRaw: Object.fromEntries([...colorToId.entries()].map(([color, id]) => [id, color]))
-			});
+			
+			resolve(getIndexedImageFromCanvas(canvas));
 		};
 
 		img.onerror = reject;
 		img.src = base64Image;
 	});
 }
+
+
+window.getIndexedImageFromCanvas = function (canvas) {
+	const ctx = canvas.getContext("2d");
+	const { width, height } = canvas;
+
+	const imageData = ctx.getImageData(0, 0, width, height).data;
+
+	const colorToId = new Map();
+	let nextId = 1;
+
+	const pixelIdGrid = [];
+	for (let y = 0; y < height; y++) {
+		const row = [];
+		for (let x = 0; x < width; x++) {
+			const i = (y * width + x) * 4;
+			const r = imageData[i + 0];
+			const g = imageData[i + 1];
+			const b = imageData[i + 2];
+			const a = imageData[i + 3];
+
+			const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${a.toString(16).padStart(2, '0')}`.toUpperCase();
+
+			if (!colorToId.has(hex)) {
+				colorToId.set(hex, nextId++);
+			}
+
+			row.push(colorToId.get(hex));
+		}
+		pixelIdGrid.push(row);
+	}
+
+	return {
+		pixelIdGrid: pixelIdGrid,
+		idToColorRaw: Object.fromEntries([...colorToId.entries()].map(([color, id]) => [id, color]))
+	};
+};

@@ -1,9 +1,13 @@
 ﻿@page "/"
 @using WfcWebApp.Utils
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Texture Generator</PageTitle>
 
-<h1>Testing Zone</h1>
+<h3>Texture Generator</h3>
+<p>
+    Generate seamless, wrapping textures of any size using wave function collapse!<br/>
+    Upload a suitable input texture below:
+</p>
 
 <Upload OnImageChanged="@HandleImageChanged"/>
 <DrawableCanvas Image="@userInputImage"/>
