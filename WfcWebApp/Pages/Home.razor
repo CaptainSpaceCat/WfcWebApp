@@ -1,7 +1,16 @@
 ﻿@page "/"
+@using WfcWebApp.Utils
 
 <PageTitle>Home</PageTitle>
 
-<h1>Hello, world!</h1>
+<h1>Testing Zone</h1>
 
-Welcome to your new app.
+<Upload OnImageChanged="@HandleImageChanged"/>
+<DrawableCanvas Image="@userInputImage"/>
+
+@code {
+    private IndexedImage userInputImage = IndexedImage.CreateBlank(32, 32);
+    private void HandleImageChanged(IndexedImage image) {
+        userInputImage = image;
+    }
+}
