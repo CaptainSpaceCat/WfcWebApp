@@ -1,16 +1,16 @@
 using System.Text.Json.Serialization;
+using WfcWebApp.Utils;
 
-namespace WfcWebApp.Utils
+namespace WfcWebApp.Wfc
 {
 public class IndexedImage
 {
+    // Raw format for interop, always preserved
 	public int[][] PixelIdGrid { get; set; } = default!;
+    public Dictionary<int, string> IdToColorRaw { get; set; } = new();
 
     public int Width => PixelIdGrid != null ? PixelIdGrid[0].Length : 0;
-    public int Height => PixelIdGrid != null ? PixelIdGrid.Length : 0; 
-
-	// Raw format for interop, always preserved
-	public Dictionary<int, string> IdToColorRaw { get; set; } = new();
+    public int Height => PixelIdGrid != null ? PixelIdGrid.Length : 0;
 
 	// Lazy-converted map for C# use
 	[JsonIgnore]
@@ -37,14 +37,16 @@ public class IndexedImage
 
 	public void ResetColorCache() => _idToColorCache = null;
 
+    public int GetPixelId(int x, int y) {
+        return PixelIdGrid[y][x];
+    }
+
 	public void AddColor(Color color)
 	{
         int id = Count + 1;
 		IdToColorRaw[id] = color.ToString(); // store the string version
 		ResetColorCache(); // in case it already existed
 	}
-
-    
 
     public static IndexedImage CreateBlank(int width, int height)
     {

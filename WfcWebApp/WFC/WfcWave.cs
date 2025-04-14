@@ -1,12 +1,8 @@
 namespace WfcWebApp.Wfc
 {
-    
+
 public class WfcWave
 {
-    //TODO store collapsed position tracker in here instead
-    // add function to 
-
-
     // Dictionary to store sets of possible patterns at each position
     private Dictionary<Vector2I, SparsePatternSet> waveDict = new();
     const int maxEntropy = int.MaxValue;

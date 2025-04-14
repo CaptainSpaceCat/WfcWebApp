@@ -9,7 +9,7 @@
     </div>
     
     <!-- Fixed-size container for canvas + palette -->
-    <div style="display: flex; height: @(_height * Scale)px; overflow: hidden;"">
+    <div style="display: flex; height: @(_height * Scale)px; overflow: hidden;">
         <!-- Canvas -->
         <canvas id="@CanvasId"
             width="@_width" height="@_height"
@@ -48,7 +48,7 @@
     private int _height;
 
     [Parameter] public IndexedImage Image { get; set; } = default!;
-    [Parameter] public int Scale { get; set; } = 12;
+    [Parameter] public int Scale { get; set; } = 8;
     [Parameter] public bool ReadOnly { get; set; } = false;
 
     private bool _needsCanvasInit = true;

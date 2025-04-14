@@ -6,15 +6,20 @@
 <h3>Texture Generator</h3>
 <p>
     Generate seamless, wrapping textures of any size using wave function collapse!<br/>
-    Upload a suitable input texture below:
+    Upload a suitable input texture below, or draw one yourself!
 </p>
 
 <Upload OnImageChanged="@HandleImageChanged"/>
 <DrawableCanvas Image="@userInputImage"/>
+<WfcParameters/>
+<WfcGenerator/>
+
 
 @code {
     private IndexedImage userInputImage = IndexedImage.CreateBlank(32, 32);
     private void HandleImageChanged(IndexedImage image) {
         userInputImage = image;
+
     }
 }
+
