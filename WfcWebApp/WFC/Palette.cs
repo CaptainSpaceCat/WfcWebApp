@@ -68,20 +68,49 @@ public class Palette
         }
     }
 
+    public IEnumerable<(int index, int weight)> AllUniqueWeightedPatterns() {
+        for (int i = 0; i < PatternIndexer.Count; i++) {
+            yield return (i, GetWeightFromIndex(i));
+        }
+    }
+
+    public IEnumerable<int> MatchingPatterns(int patternIndex, int direction) {
+        PatternView template = GetPatternFromIndex(patternIndex);
+        foreach (int index in EncodingTrie.MatchingPatterns(template, direction)) {
+            yield return index;
+        }
+    }
+
     public PatternView GetPatternFromIndex(int index) {
         return PatternIndexer[index];
     }
 
+    public int GetWeightFromIndex(int index) {
+        PatternView p = GetPatternFromIndex(index);
+        return RotationalSymmetry ? p.TotalWeight : p.SingleWeight;
+    }
+
     public int GetPixel(int x, int y) {
+        (x, y) = BoundaryCheck(x, y);
+        return PaletteImage.GetPixelId(x, y);
+    }
+
+    
+
+    public Color GetColor(int x, int y) {
+        (x, y) = BoundaryCheck(x, y);
+        return PaletteImage.GetColor(x, y);
+    }
+
+    private (int, int) BoundaryCheck(int x, int y) {
         if (Wrap) {
             x = (x % Width + Width) % Width;
             y = (y % Height + Height) % Height;
         } else if (x < 0 || x >= Width || y < 0 || y >= Height) {
             throw new IndexOutOfRangeException();
         }
-        return PaletteImage.GetPixelId(x, y);
-    }
-
+        return (x, y);
+    } 
 
 }
 

@@ -35,6 +35,10 @@ public abstract class PatternView
         }
     }
 
+    public int SingleWeight {
+        get { return _weights[0]; }
+    }
+
     protected PatternView(SharedIndex index, (int, int) origin, int size, int rotation, int[] weights)
     {
         if (weights.Length != 4)

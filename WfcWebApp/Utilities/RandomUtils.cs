@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 
-namespace WfcWebApp.Wfc
+namespace WfcWebApp.Utils
 {
 
 public static class RandomUtils

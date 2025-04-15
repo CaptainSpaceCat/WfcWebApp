@@ -17,6 +17,8 @@ namespace WfcWebApp.Utils
             return new Color(r, g, b, a);
         }
 
+        public static Color Gray = FromHex("#888888");
+
     }
 
 }

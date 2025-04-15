@@ -40,12 +40,17 @@ public class SparsePatternSet
 
     public void UnionWith(SparsePatternSet other)
     {
-        foreach (var kvp in other.chunks)
-        {
-            if (chunks.ContainsKey(kvp.Key))
-                chunks[kvp.Key] |= kvp.Value;
-            else
+        if (_unobserved) {
+            foreach (var kvp in other.chunks)
                 chunks[kvp.Key] = kvp.Value;
+        } else {
+            foreach (var kvp in other.chunks)
+            {
+                if (chunks.ContainsKey(kvp.Key))
+                    chunks[kvp.Key] |= kvp.Value;
+                else
+                    chunks[kvp.Key] = kvp.Value;
+            }
         }
         _unobserved = false;
     }
@@ -72,6 +77,11 @@ public class SparsePatternSet
         foreach (int key in keysToRemove)
             chunks.Remove(key);
         
+        if (_unobserved) {
+            foreach (var kvp in other.chunks)
+                chunks[kvp.Key] = kvp.Value;
+        }
+
         _unobserved = false;
     }
 

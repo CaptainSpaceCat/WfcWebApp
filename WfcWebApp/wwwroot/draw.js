@@ -138,3 +138,18 @@ window.getIndexedImageFromCanvas = function (canvas) {
 		idToColorRaw: Object.fromEntries([...colorToId.entries()].map(([color, id]) => [id, color]))
 	};
 };
+
+window.drawSwatchImage = (canvas, pixelBytes) => {
+	const ctx = canvas.getContext("2d");
+	const w = canvas.width;
+	const h = canvas.height;
+
+	const imageData = ctx.createImageData(w, h);
+	imageData.data.set(pixelBytes);
+	ctx.putImageData(imageData, 0, 0);
+};
+
+window.setCanvasSize = (canvas, width, height) => {
+	canvas.width = width;
+	canvas.height = height;
+};

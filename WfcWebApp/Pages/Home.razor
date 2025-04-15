@@ -1,4 +1,5 @@
 ﻿@page "/"
+@using WfcWebApp.Wfc
 @using WfcWebApp.Utils
 
 <PageTitle>Texture Generator</PageTitle>
@@ -11,15 +12,38 @@
 
 <Upload OnImageChanged="@HandleImageChanged"/>
 <DrawableCanvas Image="@userInputImage"/>
-<WfcParameters/>
-<WfcGenerator/>
-
+<WfcParameters @ref="parametersRef"/>
+<WfcGenerator
+    @ref="generatorRef"
+    PaletteImage="@userInputImage"
+    OnStepComplete="@OnGenerationStep"
+    />
+<SwatchImageCanvas
+    @ref="swatchCanvasRef"
+    />
 
 @code {
+    private WfcGenerator generatorRef;
+    private WfcParameters parametersRef;
     private IndexedImage userInputImage = IndexedImage.CreateBlank(32, 32);
+
+    private VisualWaveRenderer waveVisualizer = new();
+
     private void HandleImageChanged(IndexedImage image) {
         userInputImage = image;
-
     }
+
+    private SwatchImage? outputImage = null;
+    private SwatchImageCanvas swatchCanvasRef = default!;
+    private async Task OnGenerationStep(Generator.StepResult result) {
+        if (outputImage == null) {
+            outputImage = new(generatorRef.Config.OutputWidth, generatorRef.Config.OutputHeight);
+            swatchCanvasRef.SetImage(outputImage);
+        }
+        waveVisualizer.RenderToImage(generatorRef.wfcGenerator.Wave, generatorRef.wfcGenerator.Palette, outputImage);
+        await swatchCanvasRef.Rerender();
+        await Task.Delay(20);
+    }
+
 }
 

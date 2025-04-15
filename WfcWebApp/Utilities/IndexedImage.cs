@@ -1,7 +1,6 @@
 using System.Text.Json.Serialization;
-using WfcWebApp.Utils;
 
-namespace WfcWebApp.Wfc
+namespace WfcWebApp.Utils
 {
 public class IndexedImage
 {
@@ -39,6 +38,10 @@ public class IndexedImage
 
     public int GetPixelId(int x, int y) {
         return PixelIdGrid[y][x];
+    }
+
+    public Color GetColor(int x, int y) {
+        return IdToColor[GetPixelId(x, y)];
     }
 
 	public void AddColor(Color color)

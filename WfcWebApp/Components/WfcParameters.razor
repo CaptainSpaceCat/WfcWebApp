@@ -1,3 +1,5 @@
+@using WfcWebApp.Wfc
+
 <div style="display: flex; flex-direction: column; gap: 8px;">
 	<label>
 		<input type="checkbox" @bind="Wrap" />
@@ -20,7 +22,10 @@
 	</label>
 </div>
 
+
+
 @code {
+	//TODO add convSize parameter to config, slider to page above
 	public bool Wrap { get; set; } = true;
 	public bool RotationalSymmetry { get; set; } = true;
 	public int OutputWidth { get; set; } = 64;
@@ -33,14 +38,6 @@
 		OutputWidth = OutputWidth,
 		OutputHeight = OutputHeight
 	};
-
-    public class WfcConfig
-    {
-        public bool Wrap { get; set; }
-        public bool RotationalSymmetry { get; set; }
-        public int OutputWidth { get; set; }
-        public int OutputHeight { get; set; }
-    }
 }
 
 
