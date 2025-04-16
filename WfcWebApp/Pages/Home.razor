@@ -18,9 +18,10 @@
     PaletteImage="@userInputImage"
     OnStepComplete="@OnGenerationStep"
     />
-<SwatchImageCanvas
-    @ref="swatchCanvasRef"
-    />
+<div style="display: flex; gap: 8px; align-items: start;">
+	<SwatchImageCanvas @ref="swatchCanvasRef" />
+	<SwatchImageCanvas @ref="entropyCanvasRef" />
+</div>
 
 @code {
     private WfcGenerator generatorRef;
@@ -34,14 +35,18 @@
     }
 
     private SwatchImage? outputImage = null;
+    private SwatchImage? entropyImage = null;
     private SwatchImageCanvas swatchCanvasRef = default!;
+    private SwatchImageCanvas entropyCanvasRef = default!;
     private async Task OnGenerationStep(Generator.StepResult result) {
         if (outputImage == null) {
             outputImage = new(generatorRef.Config.OutputWidth, generatorRef.Config.OutputHeight);
             swatchCanvasRef.SetImage(outputImage);
         }
         waveVisualizer.RenderToImage(generatorRef.wfcGenerator.Wave, generatorRef.wfcGenerator.Palette, outputImage);
+        waveVisualizer.RenderToEntropy(generatorRef.wfcGenerator.Wave, entropyImage);
         await swatchCanvasRef.Rerender();
+        await entropyCanvasRef.Rerender();
         await Task.Delay(20);
     }
 

@@ -1,9 +1,13 @@
 @using WfcWebApp.Utils
 @inject IJSRuntime JS
 
-<div style="display: inline-block; border: 1px solid #413c71; padding: 2px; background: white;">
-    <canvas @ref="canvasRef" width="@Width" height="@Height"></canvas>
-</div>
+
+<canvas @ref="canvasRef"
+	width="@Width" height="@Height"
+	style="width:@(500)px; height:@(500)px; image-rendering: pixelated;">
+</canvas>
+<!-- #region  
+style="display: inline-block; border: 1px solid #413c71; padding: 2px; background: white;"-->
 
 @code {
 	[Parameter] public SwatchImage? Image { get; set; }

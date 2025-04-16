@@ -31,6 +31,20 @@ public class VisualWaveRenderer : WaveRenderer
             }
         }
     }
+
+    public override void RenderToEntropy(BoundedWave wave, SwatchImage image)
+    {
+        image.Clear();
+        for (int y = 0; y < wave.Height; y++) {
+            for (int x = 0; x < wave.Width; x++) {
+                SparsePatternSet patterns = wave.AccessPatternSet(x, y);
+                if (patterns.IsUnobserved) {
+                    image.AddColorToPosition(y, x, Color.Gray);
+                    //TODO finish this
+                }
+            }
+        }
+    }
 }
 
 public class EntropyWaveRenderer : WaveRenderer

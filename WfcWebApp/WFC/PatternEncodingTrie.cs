@@ -27,6 +27,7 @@ public class PatternEncodingTrie
             return false;
         }
         curr.Leaf = pattern;
+        curr.Leaf.AddWeight(rotation);
         return true;
     }
 

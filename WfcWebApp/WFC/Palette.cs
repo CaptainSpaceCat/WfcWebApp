@@ -37,32 +37,25 @@ public class Palette
         int reduce = Wrap ? 0 : ConvSize-1;
         for (int y = 0; y < Height - reduce; y++) {
             for (int x = 0; x < Width - reduce; x++) {
-                // make a shared weights int array[4]
+                // make shared structures
                 int[] sharedWeights = new int[4];
-                patternIndex++; // increment the pattern index by default, it will be decremented if a new pattern isn't added
+                // increment the pattern index by default, it will be decremented if a new pattern isn't added
+                SharedIndex sharedIndex = new(++patternIndex);
 
-                for (int r = 0; r < 4; r++) { // for each cardinal direction
-                    // make a new PalettePatternView object referencing this palette, position (x, y), rotation, and size
-                    // assign the same weights array to the new palettepatternview (and the others in their loops)
-                    var view = new PalettePatternView(this, new SharedIndex(patternIndex), (x, y), ConvSize, r, sharedWeights);
-
-                    // navigate the pattern in the current direction, traversing the encoding trie, addorcreatechild
-                    if (!EncodingTrie.TryAddNewPattern(view, r)) {
-                        // if the pattern already existed in the trie, it's guaranteed that the other 3 rotations of it will be there too
-                        // thus we can break here, out of the r = 0 to 4 inner loop, and continue from the next (x,y)
-                        patternIndex--; //decrement because we did not add a new pattern
-                        break;
-                    } else if (r == 0) {
-                        // if the pattern didn't exist in the trie before, it does now
-                        // and we're guaranteed to add the other 3 rotations in the next 3 inner loops
-                        
-                        // add 1 to the new pattern's weight from rotation 0
-                        // this will implicitly be reflected in the patterns for the other 4 rotations
-                        view.AddWeight(0);
-                    }
-
-                    // successfully adding a new pattern means we must map to that pattern
+                var view = new PalettePatternView(this, sharedIndex, (x, y), ConvSize, 0, sharedWeights);
+                if (!EncodingTrie.TryAddNewPattern(view, 0)) {
+                        // if the pattern already existed in the trie at rotation 0,
+                        // it's guaranteed that the other 3 rotations of it will be there too
+                        patternIndex--; //decrement because we did not add any new patterns
+                } else {
                     PatternIndexer.Add(view);
+                    for (int r = 1; r < 4; r++) { // for each of the other 3 cardinal directions
+                        // make a new PalettePatternView object referencing this palette, position (x, y), rotation, and size
+                        // assign the same weights array to the new palettepatternview (and the others in their loops)
+                        view = new PalettePatternView(this, sharedIndex, (x, y), ConvSize, r, sharedWeights);
+                        EncodingTrie.TryAddNewPattern(view, r);
+                        PatternIndexer.Add(view);
+                    }
                 }
             }
         }
@@ -82,6 +75,9 @@ public class Palette
     }
 
     public PatternView GetPatternFromIndex(int index) {
+        if (index >= PatternIndexer.Count) {
+            throw new IndexOutOfRangeException($"Attempt to access pattern {index} with only {PatternIndexer.Count} available.");
+        }
         return PatternIndexer[index];
     }
 
