@@ -9,15 +9,15 @@ public class PatternEncodingTrie
 {
     private TrieNode root = new();
 
-    public bool TryAddNewPattern(PatternView pattern, int rotation) {
+    public bool TryAddNewPattern(PatternView pattern) {
         TrieNode curr = root;
-        foreach (int pixelId in pattern.Values(rotation)) {
+        foreach (int pixelId in pattern.Values(0)) {
             curr = curr.GetOrAddChild(pixelId);
         }
         if (curr.HasLeaf) {
             // this pattern already exists in the tree. Hooray!
             // increment its weight
-            curr.Leaf.AddWeight(rotation);
+            curr.Leaf.AddWeight(pattern.Rotation);
 
             // note that this only works because
                 // A: the other 3 rotations of this pattern stored in the trie share this pattern's weights
@@ -27,7 +27,7 @@ public class PatternEncodingTrie
             return false;
         }
         curr.Leaf = pattern;
-        curr.Leaf.AddWeight(rotation);
+        curr.Leaf.AddWeight(0);
         return true;
     }
 
@@ -78,9 +78,27 @@ public class PatternEncodingTrie
     }
 
 
+    public void PrintContents() {
+        PrintNode(root, "");
+    }
+
+    private void PrintNode(TrieNode node, string indent) {
+        if (node.HasLeaf) {
+            Console.WriteLine($"{indent}Leaf → PatternIndex: {node.Leaf.GetPatternIndex(0)}, Weights: {string.Join(",", Enumerable.Range(0, 4).Select(r => node.Leaf.GetWeight(r)))}");
+        }
+        if (node.Children != null) {
+            foreach (var kvp in node.Children) {
+                Console.WriteLine($"{indent}TileID: {kvp.Key}");
+                PrintNode(kvp.Value, indent + "  ");
+            }
+        }
+    }
+
+
+
     private class TrieNode
     {
-        private Dictionary<int, TrieNode>? Children = null;
+        public Dictionary<int, TrieNode>? Children = null;
         
         public PatternView Leaf = null!;
         public bool HasLeaf => Leaf != null;

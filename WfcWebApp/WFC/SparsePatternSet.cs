@@ -6,6 +6,8 @@ public class SparsePatternSet
 {
     private bool _unobserved = true;
     public bool IsUnobserved { get {return _unobserved;} }
+    public bool IsCollapsed { get {return !_unobserved && Count == 1;}}
+    public bool IsContradiction { get {return !_unobserved && Count == 0;}}
 
     private Dictionary<int, ulong> chunks = new(); // Maps chunk indices to their bitmasks
 

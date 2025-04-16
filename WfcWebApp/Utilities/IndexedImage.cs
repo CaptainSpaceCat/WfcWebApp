@@ -44,6 +44,10 @@ public class IndexedImage
         return IdToColor[GetPixelId(x, y)];
     }
 
+    public Color GetColorFromId(int id) {
+        return IdToColor[id];
+    }
+
 	public void AddColor(Color color)
 	{
         int id = Count + 1;

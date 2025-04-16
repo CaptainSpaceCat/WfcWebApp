@@ -39,6 +39,10 @@ public abstract class PatternView
         get { return _weights[0]; }
     }
 
+    public int GetWeight(int r) {
+        return _weights[r];
+    }
+
     protected PatternView(SharedIndex index, (int, int) origin, int size, int rotation, int[] weights)
     {
         if (weights.Length != 4)
@@ -72,13 +76,13 @@ public abstract class PatternView
         {
             for (int x = 0; x < s; x++)
             {
-                MapRotation(x, y, direction, out int rx, out int ry);
+                MapRotation(x, y, direction + Rotation, out int rx, out int ry);
                 yield return Read(rx, ry);
             }
         }
     }
 
-    private void MapRotation(int x, int y, int rotation, out int rx, out int ry)
+    protected void MapRotation(int x, int y, int rotation, out int rx, out int ry)
     {
         int s = Size;
         rotation = WrapR(rotation);
@@ -137,6 +141,12 @@ public class PalettePatternView : PatternView
     // This works because the shared index along with rotation are the values needed to calculate the correct mapping index
     public override PatternView GetRotatedCopy(int offset) {
         return new PalettePatternView(_source, _internalIndex, Origin, Size, WrapR(Rotation + offset), _weights);
+    }
+
+    public Color GetColor(int x, int y) {
+        MapRotation(x, y, Rotation, out int rx, out int ry);
+        int pixelId = Read(rx, ry);
+        return _source.GetColor(pixelId);
     }
 
 }

@@ -28,10 +28,10 @@
     private WfcParameters parametersRef;
     private IndexedImage userInputImage = IndexedImage.CreateBlank(32, 32);
 
-    private VisualWaveRenderer waveVisualizer = new();
-
     private void HandleImageChanged(IndexedImage image) {
         userInputImage = image;
+        outputImage = null;
+        entropyImage = null;
     }
 
     private SwatchImage? outputImage = null;
@@ -41,13 +41,18 @@
     private async Task OnGenerationStep(Generator.StepResult result) {
         if (outputImage == null) {
             outputImage = new(generatorRef.Config.OutputWidth, generatorRef.Config.OutputHeight);
+            entropyImage = new(generatorRef.Config.OutputWidth, generatorRef.Config.OutputHeight);
             swatchCanvasRef.SetImage(outputImage);
+            entropyCanvasRef.SetImage(entropyImage);
         }
-        waveVisualizer.RenderToImage(generatorRef.wfcGenerator.Wave, generatorRef.wfcGenerator.Palette, outputImage);
-        waveVisualizer.RenderToEntropy(generatorRef.wfcGenerator.Wave, entropyImage);
+        WaveVisualizer.RenderToImage(generatorRef.wfcGenerator.Wave, generatorRef.wfcGenerator.Palette, outputImage);
+        WaveVisualizer.RenderToEntropy(generatorRef.wfcGenerator, entropyImage);
         await swatchCanvasRef.Rerender();
         await entropyCanvasRef.Rerender();
-        await Task.Delay(20);
+        
+        // Force visual update *now*
+        StateHasChanged();
+        await Task.Yield(); // yields control so rendering can happen
     }
 
 }

@@ -137,13 +137,17 @@ public class Generator
         }
 
         foreach ((int x, int y) in positionFilter) {
-            int entropy = GetEntropy(x, y);
-            if ((entropy > 1 || (includeCollapsed && entropy == 1)) && entropy <= minEntropy) {
-                if (entropy < minEntropy) {
-                    minEntropy = entropy;
-                    PositionCandidates.Clear();
+            SparsePatternSet patternSet = Wave.AccessPatternSet(x, y);
+            if (!patternSet.IsContradiction && (!patternSet.IsCollapsed || includeCollapsed)) {
+                // we need to calculate entropy
+                int entropy = GetEntropy(x, y);
+                if (entropy <= minEntropy) {
+                    if (entropy < minEntropy) {
+                        minEntropy = entropy;
+                        PositionCandidates.Clear();
+                    }
+                    PositionCandidates.Add((x, y));
                 }
-                PositionCandidates.Add((x, y));
             }
         }
         
@@ -154,7 +158,7 @@ public class Generator
         return false;
     }
 
-    private int GetEntropy(int x, int y) {
+    public int GetEntropy(int x, int y) {
         SparsePatternSet patternSet = Wave.AccessPatternSet(x, y);
         if (patternSet.IsUnobserved) {
             return int.MaxValue;

@@ -43,7 +43,7 @@ public class Palette
                 SharedIndex sharedIndex = new(++patternIndex);
 
                 var view = new PalettePatternView(this, sharedIndex, (x, y), ConvSize, 0, sharedWeights);
-                if (!EncodingTrie.TryAddNewPattern(view, 0)) {
+                if (!EncodingTrie.TryAddNewPattern(view)) {
                         // if the pattern already existed in the trie at rotation 0,
                         // it's guaranteed that the other 3 rotations of it will be there too
                         patternIndex--; //decrement because we did not add any new patterns
@@ -53,12 +53,13 @@ public class Palette
                         // make a new PalettePatternView object referencing this palette, position (x, y), rotation, and size
                         // assign the same weights array to the new palettepatternview (and the others in their loops)
                         view = new PalettePatternView(this, sharedIndex, (x, y), ConvSize, r, sharedWeights);
-                        EncodingTrie.TryAddNewPattern(view, r);
+                        EncodingTrie.TryAddNewPattern(view);
                         PatternIndexer.Add(view);
                     }
                 }
             }
         }
+        EncodingTrie.PrintContents();
     }
 
     public IEnumerable<(int index, int weight)> AllUniqueWeightedPatterns() {
@@ -93,9 +94,8 @@ public class Palette
 
     
 
-    public Color GetColor(int x, int y) {
-        (x, y) = BoundaryCheck(x, y);
-        return PaletteImage.GetColor(x, y);
+    public Color GetColor(int pixelId) {
+        return PaletteImage.GetColorFromId(pixelId);
     }
 
     private (int, int) BoundaryCheck(int x, int y) {

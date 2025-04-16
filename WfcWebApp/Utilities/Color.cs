@@ -18,6 +18,38 @@ namespace WfcWebApp.Utils
         }
 
         public static Color Gray = FromHex("#888888");
+        public static Color LightGray = FromHex("#cccccc");
+        public static Color DarkGray = FromHex("#222222");
+
+        public static Color Rainbow(float t) {
+            t = Math.Clamp(t, 0f, 1f);
+            float h = t * 360f; // hue in degrees
+            float s = 1f, v = 1f;
+
+            // HSV to RGB conversion
+            int hi = (int)(h / 60f) % 6;
+            float f = h / 60f - hi;
+            float p = v * (1f - s);
+            float q = v * (1f - f * s);
+            float r = v * (1f - (1f - f) * s);
+
+            (float rf, float gf, float bf) = hi switch {
+                0 => (v, r, p),
+                1 => (q, v, p),
+                2 => (p, v, r),
+                3 => (p, q, v),
+                4 => (r, p, v),
+                5 => (v, p, q),
+                _ => (0f, 0f, 0f),
+            };
+
+            return new Color(
+                (byte)(rf * 255),
+                (byte)(gf * 255),
+                (byte)(bf * 255),
+                255
+            );
+        }
 
     }
 
