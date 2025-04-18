@@ -23,7 +23,7 @@
         AutoRun
     }
 
-    [Parameter] public WfcConfig Config { get; set; } = WfcConfig.Default;
+    [Parameter] public WfcParameters Parameters { get; set; }
     [Parameter] public GenerationMode Mode { get; set; } = GenerationMode.MultiStep;
     [Parameter] public EventCallback<Generator.StepResult> OnStepComplete { get; set; }
     
@@ -34,11 +34,15 @@
     private bool Ready = false;
 
 
-    public async Task FullGenerate() {
+    private void ReadyUp() {
         if (!Ready) {
-            wfcGenerator.Initialize(Config, PaletteImage);
+            wfcGenerator.Initialize(WfcConfig.NoWrap, PaletteImage);
             Ready = true;
         }
+    }
+
+    public async Task FullGenerate() {
+        ReadyUp();
         var result = wfcGenerator.Next();
         while (!(result == Generator.StepResult.Completed
             || result == Generator.StepResult.Error))
@@ -53,20 +57,14 @@
 
     // performs a single step of the algorithm
     public async Task SingleStep() {
-        if (!Ready) {
-            wfcGenerator.Initialize(Config, PaletteImage);
-            Ready = true;
-        }
+        ReadyUp();
         var result = wfcGenerator.Next();
         await OnStepComplete.InvokeAsync(result);
     }
 
     // performs steps until we reach a BackpropConvergence result (or Completed)
     public async Task FullBackpropStep() {
-        if (!Ready) {
-            wfcGenerator.Initialize(Config, PaletteImage);
-            Ready = true;
-        }
+        ReadyUp();
         var result = wfcGenerator.Next();
         while (!(result == Generator.StepResult.BackpropConvergence 
             || result == Generator.StepResult.Completed

@@ -15,20 +15,25 @@ public class PatternEncodingTrie
             curr = curr.GetOrAddChild(pixelId);
         }
         if (curr.HasLeaf) {
-            // this pattern already exists in the tree. Hooray!
-            // increment its weight
-            curr.Leaf.AddWeight(pattern.Rotation);
-
-            // note that this only works because
-                // A: the other 3 rotations of this pattern stored in the trie share this pattern's weights
-                // B: returning false here causes the pattern-adding code to skip adding weight to the other 3 rotations
-                // which avoids quadruple counting weight
-                // These two combined mean the weights should always match up across rotations of the same pattern
+            Console.WriteLine($"\nFound existing pattern: {pattern}");
+            PatternView view = curr.Leaf;
+            if (pattern.Rotation == 0) {
+                // This accounts for patterns with rotational symmetry, which would hash to their 0 rotation from multiple angles
+                view.AddWeight(0);
+            }
+            
+            //PrintContents();
             return false;
+        } else {
+            Console.WriteLine($"\nAdding new pattern: {pattern}");
+            if (pattern.Rotation == 0) {
+                pattern.AddWeight(0);
+            }
+            curr.Leaf = pattern;
+            //PrintContents();
+            return true;
         }
-        curr.Leaf = pattern;
-        curr.Leaf.AddWeight(0);
-        return true;
+        
     }
 
     

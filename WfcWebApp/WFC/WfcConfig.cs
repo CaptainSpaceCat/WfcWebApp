@@ -10,11 +10,18 @@ public class WfcConfig
 
 
     public static WfcConfig Default = new() {
-		Wrap = true,
-		RotationalSymmetry = true,
-		OutputWidth = 64,
-		OutputHeight = 64
-	};
+      Wrap = true,
+      RotationalSymmetry = true,
+      OutputWidth = 64,
+      OutputHeight = 64
+    };
+
+    public static WfcConfig NoWrap = new() {
+      Wrap = false,
+      RotationalSymmetry = true,
+      OutputWidth = 64,
+      OutputHeight = 64
+    };
 }
 
 }

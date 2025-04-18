@@ -17,6 +17,7 @@
     @ref="generatorRef"
     PaletteImage="@userInputImage"
     OnStepComplete="@OnGenerationStep"
+    Parameters="@parametersRef"
     />
 <div style="display: flex; gap: 8px; align-items: start;">
 	<SwatchImageCanvas @ref="swatchCanvasRef" />
@@ -40,8 +41,9 @@
     private SwatchImageCanvas entropyCanvasRef = default!;
     private async Task OnGenerationStep(Generator.StepResult result) {
         if (outputImage == null) {
-            outputImage = new(generatorRef.Config.OutputWidth, generatorRef.Config.OutputHeight);
-            entropyImage = new(generatorRef.Config.OutputWidth, generatorRef.Config.OutputHeight);
+            WfcConfig config = generatorRef.Parameters.GetConfig();
+            outputImage = new(config.OutputWidth, config.OutputHeight);
+            entropyImage = new(config.OutputWidth, config.OutputHeight);
             swatchCanvasRef.SetImage(outputImage);
             entropyCanvasRef.SetImage(entropyImage);
         }

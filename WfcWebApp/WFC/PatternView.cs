@@ -40,7 +40,7 @@ public abstract class PatternView
     }
 
     public int GetWeight(int r) {
-        return _weights[r];
+        return _weights[WrapR(r + Rotation)];
     }
 
     protected PatternView(SharedIndex index, (int, int) origin, int size, int rotation, int[] weights)
@@ -111,6 +111,20 @@ public abstract class PatternView
     protected abstract void Write(int x, int y, int value);
     public abstract PatternView GetRotatedCopy(int offset);
 
+    public override string ToString()
+    {
+        string result = "\n";
+        int c = 0;
+        foreach (int index in Values(0)) {
+            result += $"{index} ";
+            if (++c == Size) {
+                c = 0;
+                result += "\n";
+            }
+        }
+        return result;
+    }
+
     public void AddWeight(int r) {
         r = WrapR(r + Rotation);
         _weights[r]++;
@@ -149,7 +163,12 @@ public class PalettePatternView : PatternView
         return _source.GetColor(pixelId);
     }
 
-}
+        public override string ToString()
+        {
+            return base.ToString();
+        }
+
+    }
 
 public class SharedIndex {
 	private readonly int _index;

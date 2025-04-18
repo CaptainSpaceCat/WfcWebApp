@@ -10,7 +10,7 @@ public class Palette
 {
     public bool Wrap = true;
     public bool RotationalSymmetry = true;
-    public int ConvSize = 3;
+    public int ConvSize = 2;
 
     private IndexedImage PaletteImage = default!;
     private PatternEncodingTrie EncodingTrie = new();
@@ -103,7 +103,7 @@ public class Palette
             x = (x % Width + Width) % Width;
             y = (y % Height + Height) % Height;
         } else if (x < 0 || x >= Width || y < 0 || y >= Height) {
-            throw new IndexOutOfRangeException();
+            throw new IndexOutOfRangeException($"({x}, {y})");
         }
         return (x, y);
     } 
