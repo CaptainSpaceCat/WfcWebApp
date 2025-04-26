@@ -14,6 +14,7 @@ public static class WaveVisualizer
                 if (patterns.IsUnobserved) {
                     image.AddColorToPosition(x, y, Color.Gray);
                 }
+                //Console.WriteLine($"{(x,y)}: {patterns.Count} patterns");
                 foreach (int idx in patterns) {
                     PalettePatternView pattern = (PalettePatternView)palette.GetPatternFromIndex(idx);
                     for (int r = 0; r < palette.ConvSize; r++) {

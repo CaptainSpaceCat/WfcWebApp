@@ -66,12 +66,16 @@
     public async Task FullBackpropStep() {
         ReadyUp();
         var result = wfcGenerator.Next();
+        int c = 0;
         while (!(result == Generator.StepResult.BackpropConvergence 
             || result == Generator.StepResult.Completed
             || result == Generator.StepResult.Error))
         {
             result = wfcGenerator.Next();
+            c++;
         }
+        Console.WriteLine($"Backprop took {c} iters!");
         await OnStepComplete.InvokeAsync(result);
+        Console.WriteLine("render complete");
     }
 }

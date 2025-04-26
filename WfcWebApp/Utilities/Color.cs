@@ -24,6 +24,7 @@ namespace WfcWebApp.Utils
         public static Color Rainbow(float t) {
             t = Math.Clamp(t, 0f, 1f);
             float h = t * 360f; // hue in degrees
+            h = h * 0.8f; //reduce the range of the rainbow so any wraparound is visually obvious
             float s = 1f, v = 1f;
 
             // HSV to RGB conversion

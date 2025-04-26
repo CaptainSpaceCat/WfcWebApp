@@ -9,7 +9,7 @@ public class Generator
     public Palette Palette = new();
     private int backpropHorizon = -1; // Max number of backprop iterations before moving on
     private int backpropMaxDistance = -1; // backprop won't continue past this radius around each collapse position
-    private int backpropSizeThreshold = 30; //maximum number of unique patterns we're willing to analyze during backprop
+    private int backpropSizeThreshold = 100; //maximum number of unique patterns we're willing to analyze during backprop
     // setting this value to 10 would force the wave to stay fully uncollapsed at a position if there were 11 or more possible patterns there
     // tuning this properly can vastly speed up the algorithm without losing much accuracy
 
@@ -47,6 +47,8 @@ public class Generator
         Palette.SetParams(3, config.Wrap, config.RotationalSymmetry); //TODO add a slider for conv size
         Palette.Preprocess();
         _initialized = true;
+
+        Console.WriteLine($"Palette contains {Palette.PatternCount} unique patterns");
     }
 
     public StepResult Next() {
@@ -214,9 +216,14 @@ public class Generator
                     }
 
 
-                    // intersect the wave at the neighbor offset pos with the patterns that fit
-                    //Console.WriteLine($"{patternsThatMatch.Count} matching patterns");
-                    if (backpropSizeThreshold == -1 || patternsThatMatch.Count <= backpropSizeThreshold) {
+                    
+                    // skip this next step for anywhere that:
+                    // allows all patterns (no new info gained)
+                    // allows too many patterns for the threshold (too long to compute)
+                    if ((patternsThatMatch.Count < Palette.PatternCount)
+                        && (backpropSizeThreshold == -1 || patternsThatMatch.Count <= backpropSizeThreshold)) {
+
+                        // intersect the wave at the neighbor offset pos with the patterns that fit
                         int prev_entropy = GetEntropy(nx, ny);
                         Wave.AccessPatternSet(nx, ny).IntersectWith(patternsThatMatch);
                         int new_entropy = GetEntropy(nx, ny);
@@ -224,6 +231,9 @@ public class Generator
                             // if something changed and we're not at a contradiction, continue propagation
                             BackpropFringe.Add((nx, ny));
                         }
+                    } else {
+                        // mark this tile as visited so we don't try to re-visit it, recalculate, and again find the mask to be too large
+                        BackpropVisited.Add((nx, ny));
                     }
                 }
                 

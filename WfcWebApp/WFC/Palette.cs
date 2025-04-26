@@ -20,6 +20,8 @@ public class Palette
 
     private List<PatternView> PatternIndexer = new();
 
+    public int PatternCount => EncodingTrie.CountUnique();
+
     public void SetImage(IndexedImage image) {
         PaletteImage = image;
     }
@@ -41,17 +43,18 @@ public class Palette
 
                 var view = new PalettePatternView(this, (x, y), ConvSize, 0, sharedData);
                 (PatternView leafPattern, bool is_new) = EncodingTrie.GetOrAddPattern(view);
-                if (is_new)
+                if (is_new == true) {
                     sharedData[0] = new(PatternIndexer.Count);
                     PatternIndexer.Add(leafPattern);
+                }
                 leafPattern.AddWeight();
 
-                if (is_new) {
+                if (is_new == true) {
                     // if the 0 rotation pattern is new to the trie, we need to add the other 3 rotations
                     for (int r = 1; r < 4; r++) {
                         view = new PalettePatternView(this, (x, y), ConvSize, r, sharedData);
                         (leafPattern, is_new) = EncodingTrie.GetOrAddPattern(view);
-                        if (is_new) {
+                        if (is_new == true) {
                             // if this rotated pattern is a new symmetry, add it to the indexer
                             sharedData[r] = new(PatternIndexer.Count);
                             PatternIndexer.Add(leafPattern);
@@ -62,11 +65,10 @@ public class Palette
                         }
                     }
                 }
-
             }
         }
-        //EncodingTrie.PrintContents();
-        Console.WriteLine(EncodingTrie.CountUnique());
+        EncodingTrie.PrintContents();
+        Console.WriteLine($"{EncodingTrie.CountUnique()} encoding trie unique patterns, {PatternIndexer.Count} in the indexer");
     }
 
     public IEnumerable<(int index, int weight)> AllUniqueWeightedPatterns() {

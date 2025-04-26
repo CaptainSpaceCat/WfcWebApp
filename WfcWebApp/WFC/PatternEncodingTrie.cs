@@ -40,7 +40,7 @@ public class PatternEncodingTrie
 
     public (PatternView pattern, bool is_new) GetOrAddPattern(PatternView pattern) {
         TrieNode curr = root;
-        foreach (int pixelId in pattern.Values(0)) {
+        foreach (int pixelId in pattern.Values()) {
             curr = curr.GetOrAddChild(pixelId);
         }
         if (curr.HasLeaf) {
@@ -121,7 +121,7 @@ public class PatternEncodingTrie
     {
         public Dictionary<int, TrieNode>? Children = null;
         
-        public PatternView Leaf = null!;
+        public PatternView? Leaf = null!;
         public bool HasLeaf => Leaf != null;
 
         public int Weight { get; private set; }
