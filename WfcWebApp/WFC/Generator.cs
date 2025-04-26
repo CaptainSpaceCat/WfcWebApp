@@ -33,7 +33,7 @@ public class Generator
     // Super EZ wrapper that just returns back the input result,
     // but also assigns it to PreviousStepResult first
     private StepResult SelectStepResult(StepResult result) {
-        Console.WriteLine($"Selected step result {result}");
+        //Console.WriteLine($"Selected step result {result}");
         PreviousStepResult = result;
         return result;
     }
@@ -65,6 +65,7 @@ public class Generator
                     // collapse the wave at this position
                     Console.WriteLine($"Collapsing wave at {(lx, ly)}");
                     CollapseWaveAt(lx, ly);
+                    
                     return SelectStepResult(StepResult.CollapseStep);
                 }
                 // if we don't find any position in the wave we can still collapse, we are done!
@@ -119,6 +120,7 @@ public class Generator
         }
         
         int choiceIndex = IndexKeyCounter.Sample();
+        //Console.WriteLine(Palette.GetPatternFromIndex(choiceIndex));
         Wave.CollapseWave(x, y, choiceIndex);
         BackpropFringe.Add((x, y));
     }
@@ -177,7 +179,7 @@ public class Generator
     // Returns true if backprop should continue
     // Returns false if convergence was reached or horizon was exceeded
     private bool SingleBackpropStep() {
-        Console.WriteLine($"Performing backprop iteration {current_iteration} with fringe of size {BackpropFringe.Count}");
+        //Console.WriteLine($"Performing backprop iteration {current_iteration} with fringe of size {BackpropFringe.Count}");
 		                                                                    // if it's -1, ignore the horizon
 		if (BackpropFringe.Count > 0 && (backpropHorizon > current_iteration++ || backpropHorizon < 0)) {
             if (GetLeastEntropyPosition(out int lx, out int ly, true, BackpropFringe)) {
@@ -204,14 +206,17 @@ public class Generator
                     // For each pattern that fits at this position in the wave
                     foreach (int patternIndex in Wave.AllPatternsAtPosition(lx, ly)) {
                         // for each pattern that overlaps (lx, ly) in direction r
+                        //Console.WriteLine($"Direction {r}, Template pattern: {Palette.GetPatternFromIndex(patternIndex)}");
                         foreach (int matchingIndex in Palette.MatchingPatterns(patternIndex, r)) {
                             patternsThatMatch.Add(matchingIndex);
+                            //Console.WriteLine($"Match: {Palette.GetPatternFromIndex(matchingIndex)}");
                         }
                     }
 
+
                     // intersect the wave at the neighbor offset pos with the patterns that fit
-                    Console.WriteLine($"{patternsThatMatch.Count} matching patterns");
-                    if (patternsThatMatch.Count <= backpropSizeThreshold) {
+                    //Console.WriteLine($"{patternsThatMatch.Count} matching patterns");
+                    if (backpropSizeThreshold == -1 || patternsThatMatch.Count <= backpropSizeThreshold) {
                         int prev_entropy = GetEntropy(nx, ny);
                         Wave.AccessPatternSet(nx, ny).IntersectWith(patternsThatMatch);
                         int new_entropy = GetEntropy(nx, ny);

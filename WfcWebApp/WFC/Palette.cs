@@ -33,33 +33,40 @@ public class Palette
     public void Preprocess() {
         EncodingTrie.Clear();
         PatternIndexer.Clear();
-        int patternIndex = -1;
         int reduce = Wrap ? 0 : ConvSize-1;
         for (int y = 0; y < Height - reduce; y++) {
             for (int x = 0; x < Width - reduce; x++) {
                 // make shared structures
-                int[] sharedWeights = new int[4];
-                // increment the pattern index by default, it will be decremented if a new pattern isn't added
-                SharedIndex sharedIndex = new(++patternIndex);
+                SharedPatternData[] sharedData = new SharedPatternData[4];
 
-                var view = new PalettePatternView(this, sharedIndex, (x, y), ConvSize, 0, sharedWeights);
-                if (!EncodingTrie.TryAddNewPattern(view)) {
-                        // if the pattern already existed in the trie at rotation 0,
-                        // it's guaranteed that the other 3 rotations of it will be there too
-                        patternIndex--; //decrement because we did not add any new patterns
-                } else {
-                    PatternIndexer.Add(view);
-                    for (int r = 1; r < 4; r++) { // for each of the other 3 cardinal directions
-                        // make a new PalettePatternView object referencing this palette, position (x, y), rotation, and size
-                        // assign the same weights array to the new palettepatternview (and the others in their loops)
-                        view = new PalettePatternView(this, sharedIndex, (x, y), ConvSize, r, sharedWeights);
-                        EncodingTrie.TryAddNewPattern(view);
-                        PatternIndexer.Add(view);
+                var view = new PalettePatternView(this, (x, y), ConvSize, 0, sharedData);
+                (PatternView leafPattern, bool is_new) = EncodingTrie.GetOrAddPattern(view);
+                if (is_new)
+                    sharedData[0] = new(PatternIndexer.Count);
+                    PatternIndexer.Add(leafPattern);
+                leafPattern.AddWeight();
+
+                if (is_new) {
+                    // if the 0 rotation pattern is new to the trie, we need to add the other 3 rotations
+                    for (int r = 1; r < 4; r++) {
+                        view = new PalettePatternView(this, (x, y), ConvSize, r, sharedData);
+                        (leafPattern, is_new) = EncodingTrie.GetOrAddPattern(view);
+                        if (is_new) {
+                            // if this rotated pattern is a new symmetry, add it to the indexer
+                            sharedData[r] = new(PatternIndexer.Count);
+                            PatternIndexer.Add(leafPattern);
+                        } else {
+                            // if this pattern already existed as a symmetry
+                            // copy the data reference from the original symmetry
+                            sharedData[r] = sharedData[leafPattern.Rotation];
+                        }
                     }
                 }
+
             }
         }
-        EncodingTrie.PrintContents();
+        //EncodingTrie.PrintContents();
+        Console.WriteLine(EncodingTrie.CountUnique());
     }
 
     public IEnumerable<(int index, int weight)> AllUniqueWeightedPatterns() {
@@ -84,7 +91,7 @@ public class Palette
 
     public int GetWeightFromIndex(int index) {
         PatternView p = GetPatternFromIndex(index);
-        return RotationalSymmetry ? p.TotalWeight : p.SingleWeight;
+        return RotationalSymmetry ? p.TotalWeight : p.TotalWeight; //TODO fix this
     }
 
     public int GetPixel(int x, int y) {

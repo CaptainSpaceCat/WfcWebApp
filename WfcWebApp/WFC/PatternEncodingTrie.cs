@@ -9,13 +9,15 @@ public class PatternEncodingTrie
 {
     private TrieNode root = new();
 
+    // TODO switch to get-or-add structure, then process weight adding in the calling function
+    // Palette.Preprocess()
     public bool TryAddNewPattern(PatternView pattern) {
         TrieNode curr = root;
         foreach (int pixelId in pattern.Values(0)) {
             curr = curr.GetOrAddChild(pixelId);
         }
         if (curr.HasLeaf) {
-            Console.WriteLine($"\nFound existing pattern: {pattern}");
+            //Console.WriteLine($"\nFound existing pattern: {pattern}");
             PatternView view = curr.Leaf;
             if (pattern.Rotation == 0) {
                 // This accounts for patterns with rotational symmetry, which would hash to their 0 rotation from multiple angles
@@ -25,7 +27,7 @@ public class PatternEncodingTrie
             //PrintContents();
             return false;
         } else {
-            Console.WriteLine($"\nAdding new pattern: {pattern}");
+            //Console.WriteLine($"\nAdding new pattern: {pattern}");
             if (pattern.Rotation == 0) {
                 pattern.AddWeight(0);
             }
@@ -36,11 +38,24 @@ public class PatternEncodingTrie
         
     }
 
+    public (PatternView pattern, bool is_new) GetOrAddPattern(PatternView pattern) {
+        TrieNode curr = root;
+        foreach (int pixelId in pattern.Values(0)) {
+            curr = curr.GetOrAddChild(pixelId);
+        }
+        if (curr.HasLeaf) {
+            return (curr.Leaf, false);
+        }
+        curr.Leaf = pattern;
+        return (curr.Leaf, true);
+    }
+
     
 
     // Iterates through every pattern that would fit on top of the template with offset 1 in the specified direction (0 is up, 1 is right, ect)
     // if a match rotation is specified, will only return patterns that were sampled with the same rotation
     public IEnumerable<int> MatchingPatterns(PatternView template, int direction) {
+        direction = -direction + 2;
         TrieNode? curr = root;
         foreach (int tileId in template.ValuesSkippingFirstRow(direction)) {
             curr = curr.GetChild(tileId);
@@ -53,7 +68,7 @@ public class PatternEncodingTrie
         // curr should now point to a treenode containing only patterns that would match the above template
         // we can just recursively iterate down the tree
         foreach (PatternView pattern in TraversePatterns(curr)) {
-            yield return pattern.GetPatternIndex(-direction);
+            yield return pattern.GetIndex(-direction);
         }
     }
 
@@ -89,11 +104,12 @@ public class PatternEncodingTrie
 
     private void PrintNode(TrieNode node, string indent) {
         if (node.HasLeaf) {
-            Console.WriteLine($"{indent}Leaf → PatternIndex: {node.Leaf.GetPatternIndex(0)}, Weights: {string.Join(",", Enumerable.Range(0, 4).Select(r => node.Leaf.GetWeight(r)))}");
+            Console.WriteLine(node.Leaf);
+            //Console.WriteLine($"{indent}Leaf → PatternIndex: {node.Leaf.GetIndex()}, Weights: {string.Join(",", Enumerable.Range(0, 4).Select(r => node.Leaf.GetWeight(r)))}");
         }
         if (node.Children != null) {
             foreach (var kvp in node.Children) {
-                Console.WriteLine($"{indent}TileID: {kvp.Key}");
+                //Console.WriteLine($"{indent}TileID: {kvp.Key}");
                 PrintNode(kvp.Value, indent + "  ");
             }
         }

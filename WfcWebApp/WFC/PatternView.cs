@@ -8,17 +8,20 @@ public abstract class PatternView
     public int Size { get; protected set; }
     public int Rotation { get; protected set; }
 
-    protected SharedIndex _internalIndex;
+    protected readonly SharedPatternData[] _internalData;
 
-    public int GetPatternIndex(int r) {
-        return _internalIndex[Rotation + r];
+    public int GetIndex(int r = 0) {
+        return _internalData[WrapR(Rotation + r)].Index;
+    }
+
+    public int GetWeight(int r) {
+        return _internalData[WrapR(r + Rotation)].Weight;
     }
 
     protected int WrapR(int r) {
         return (r % 4 + 4) % 4;
     }
 
-    protected readonly int[] _weights; // shared reference
     private int? _totalWeight = null;
 
     // Lazy evaluate the total weight, save in backing field
@@ -27,32 +30,20 @@ public abstract class PatternView
         get {
             if (_totalWeight == null) {
                 int sum = 0;
-                foreach (int w in _weights)
-                    sum += w;
+                foreach (SharedPatternData data in _internalData)
+                    sum += data.Weight;
                 _totalWeight = sum;
             }
             return _totalWeight.Value;
         }
     }
 
-    public int SingleWeight {
-        get { return _weights[0]; }
-    }
-
-    public int GetWeight(int r) {
-        return _weights[WrapR(r + Rotation)];
-    }
-
-    protected PatternView(SharedIndex index, (int, int) origin, int size, int rotation, int[] weights)
+    protected PatternView((int, int) origin, int size, int rotation, SharedPatternData[] data)
     {
-        if (weights.Length != 4)
-            throw new ArgumentException("Weights array must have exactly 4 elements.");
-
         Origin = origin;
         Size = size;
         Rotation = rotation;
-        _internalIndex = index;
-        _weights = weights;
+        _internalData = data;
     }
 
     // Iterates over all the values in the pattern view, from left to right, top to bottom
@@ -109,7 +100,6 @@ public abstract class PatternView
     // To be implemented by subclasses
     protected abstract int Read(int x, int y);
     protected abstract void Write(int x, int y, int value);
-    public abstract PatternView GetRotatedCopy(int offset);
 
     public override string ToString()
     {
@@ -122,12 +112,21 @@ public abstract class PatternView
                 result += "\n";
             }
         }
+        result += $"Weights: [{GetWeight(0)}";
+        for (int i = 1; i < 4; i++) {
+            result += $", {GetWeight(i)}";
+        }
+        result += "]\n";
+        result += $"Indexer: [{GetIndex(0)}";
+        for (int i = 1; i < 4; i++) {
+            result += $", {GetIndex(i)}";
+        }
+        result += $"]\nRotation: {Rotation}";
         return result;
     }
 
-    public void AddWeight(int r) {
-        r = WrapR(r + Rotation);
-        _weights[r]++;
+    public void AddWeight(int r = 0) {
+        _internalData[WrapR(r + Rotation)].AddWeight();
     }
 }
 
@@ -136,8 +135,8 @@ public class PalettePatternView : PatternView
 {
     private readonly Palette _source;
     
-    public PalettePatternView(Palette source, SharedIndex index, (int, int) origin, int size, int rotation, int[] weights)
-        : base(index, origin, size, rotation, weights)
+    public PalettePatternView(Palette source, (int, int) origin, int size, int rotation, SharedPatternData[] data)
+        : base(origin, size, rotation, data)
     {
         _source = source;
     }
@@ -150,25 +149,18 @@ public class PalettePatternView : PatternView
         throw new Exception("Writing is disabled in IndexedImagePattern.");
     }
 
-    // Gets a new patternView that shares this view's source, internal shared index, and weights.
-    // The other parameters are copied directly, except for rotation which gets the offset added to it
-    // This works because the shared index along with rotation are the values needed to calculate the correct mapping index
-    public override PatternView GetRotatedCopy(int offset) {
-        return new PalettePatternView(_source, _internalIndex, Origin, Size, WrapR(Rotation + offset), _weights);
-    }
-
     public Color GetColor(int x, int y) {
         MapRotation(x, y, Rotation, out int rx, out int ry);
         int pixelId = Read(rx, ry);
         return _source.GetColor(pixelId);
     }
 
-        public override string ToString()
-        {
-            return base.ToString();
-        }
-
+    public override string ToString()
+    {
+        return base.ToString();
     }
+
+}
 
 public class SharedIndex {
 	private readonly int _index;
@@ -185,5 +177,19 @@ public class SharedIndex {
 	}
 }
 
+
+public class SharedPatternData {
+
+    public readonly int Index;
+    public int Weight { get; protected set; }
+
+    public SharedPatternData(int index) {
+        Index = index;
+    }
+
+    public void AddWeight() {
+        Weight++;
+    }
+}
 
 }

@@ -18,8 +18,8 @@ public static class WaveVisualizer
                     PalettePatternView pattern = (PalettePatternView)palette.GetPatternFromIndex(idx);
                     for (int r = 0; r < palette.ConvSize; r++) {
                         for (int c = 0; c < palette.ConvSize; c++) {
+                            Color color = pattern.GetColor(c, r);
                             (int a, int b) = wave.WrapPosition(c+x, r+y);
-                            Color color = pattern.GetColor(a, b);
                             image.AddColorToPosition(a, b, color);
                         }
                     }
