@@ -1,0 +1,84 @@
+<!-- component used to store and access WFC logic with basic trigger buttons  -->
+@using WfcWebApp.Wfc
+@using WfcWebApp.Utils
+
+<div>
+    @switch (Mode)
+    {
+        case GenerationMode.MultiStep:
+            <button @onclick="SingleStep">One Step</button>
+            <button @onclick="FullBackpropStep">Continue Over Backprop</button>
+            <button @onclick="FullGenerate">Continue Until Complete</button>
+            break;
+        case GenerationMode.AutoRun:
+            <button @onclick="FullGenerate">Run Generation</button>
+            break;
+    }
+</div>
+
+@code {
+
+    public enum GenerationMode {
+        MultiStep,
+        AutoRun
+    }
+
+    [Parameter] public WfcParameters Parameters { get; set; }
+    [Parameter] public GenerationMode Mode { get; set; } = GenerationMode.MultiStep;
+    [Parameter] public EventCallback<Generator.StepResult> OnStepComplete { get; set; }
+    
+    [Parameter] public IndexedImage PaletteImage { get; set; }
+
+    public Generator wfcGenerator = new();
+
+    private bool Ready = false;
+
+
+    private void ReadyUp() {
+        if (!Ready) {
+            wfcGenerator.Initialize(Parameters.GetConfig(), PaletteImage);
+            Ready = true;
+        }
+    }
+
+    public async Task FullGenerate() {
+        ReadyUp();
+        var result = wfcGenerator.Next();
+        while (!(result == Generator.StepResult.Completed
+            || result == Generator.StepResult.Error))
+        {
+            result = wfcGenerator.Next();
+            if (result == Generator.StepResult.BackpropConvergence) {
+                await OnStepComplete.InvokeAsync(result);
+            }
+        }
+        await OnStepComplete.InvokeAsync(result);
+    }
+
+    // performs a single step of the algorithm
+    public async Task SingleStep() {
+        ReadyUp();
+        var result = wfcGenerator.Next();
+        await OnStepComplete.InvokeAsync(result);
+    }
+
+    // performs steps until we reach a BackpropConvergence result (or Completed)
+    public async Task FullBackpropStep() {
+        ReadyUp();
+        var result = wfcGenerator.Next();
+        int c = 0;
+        while (!(result == Generator.StepResult.BackpropConvergence 
+            || result == Generator.StepResult.Completed
+            || result == Generator.StepResult.Error))
+        {
+            result = wfcGenerator.Next();
+            c++;
+            if (c % 10 == 0) {
+                await OnStepComplete.InvokeAsync(result);
+            }
+        }
+        //Console.WriteLine($"Backprop took {c} iters!");
+        await OnStepComplete.InvokeAsync(result);
+        //Console.WriteLine("render complete");
+    }
+}

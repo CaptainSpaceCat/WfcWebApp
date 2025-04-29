@@ -1,7 +1,64 @@
 ﻿@page "/"
+@using WfcWebApp.Wfc
+@using WfcWebApp.Utils
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Texture Generator</PageTitle>
 
-<h1>Hello, world!</h1>
+<h3>Texture Generator</h3>
+<p>
+    Generate seamless, wrapping textures of any size using wave function collapse!<br/>
+    Upload a suitable input texture below, or draw one yourself!
+</p>
 
-Welcome to your new app.
+<Upload OnImageChanged="@HandleImageChanged"/>
+<DrawableCanvas Image="@userInputImage"/>
+<WfcParameters @ref="parametersRef"/>
+<WfcGenerator
+    @ref="generatorRef"
+    PaletteImage="@userInputImage"
+    OnStepComplete="@OnGenerationStep"
+    Parameters="@parametersRef"
+    />
+<div style="display: flex; gap: 8px; align-items: start;">
+	<SwatchImageCanvas @ref="swatchCanvasRef" />
+	<SwatchImageCanvas @ref="entropyCanvasRef" />
+</div>
+
+@code {
+    private WfcGenerator generatorRef;
+    private WfcParameters parametersRef;
+    private IndexedImage userInputImage = IndexedImage.CreateBlank(32, 32);
+
+    private void HandleImageChanged(IndexedImage image) {
+        userInputImage = image;
+        outputImage = null;
+        entropyImage = null;
+    }
+
+    private SwatchImage? outputImage = null;
+    private SwatchImage? entropyImage = null;
+    private SwatchImageCanvas swatchCanvasRef = default!;
+    private SwatchImageCanvas entropyCanvasRef = default!;
+
+    private int spacing = 1;
+    private async Task OnGenerationStep(Generator.StepResult result) {
+        //Console.WriteLine($"Just finished {result} step.");
+        if (outputImage == null) {
+            WfcConfig config = generatorRef.Parameters.GetConfig();
+            outputImage = new(config.OutputWidth*spacing, config.OutputHeight*spacing);
+            entropyImage = new(config.OutputWidth, config.OutputHeight);
+            swatchCanvasRef.SetImage(outputImage);
+            entropyCanvasRef.SetImage(entropyImage);
+        }
+        WaveVisualizer.RenderToImage(generatorRef.wfcGenerator.Wave, generatorRef.wfcGenerator.Palette, outputImage, spacing);
+        WaveVisualizer.RenderToEntropy(generatorRef.wfcGenerator, entropyImage);
+        await swatchCanvasRef.Rerender();
+        await entropyCanvasRef.Rerender();
+        
+        // Force visual update *now*
+        StateHasChanged();
+        await Task.Yield(); // yields control so rendering can happen
+    }
+
+}
+

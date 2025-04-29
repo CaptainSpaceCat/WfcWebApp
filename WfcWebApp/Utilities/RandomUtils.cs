@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 
-namespace WfcWebApp.Wfc
+namespace WfcWebApp.Utils
 {
 
 public static class RandomUtils
@@ -67,6 +67,9 @@ public static class RandomUtils
         private Dictionary<T, int> counter = new();
 
         public void AddWeightedKey(T key, int weight) {
+			if (weight == 0) {
+				return;
+			}
             if (counter.TryGetValue(key, out int value)) {
                 counter[key] = value + weight;
             } else {

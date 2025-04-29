@@ -1,0 +1,86 @@
+@using WfcWebApp.Utils
+
+<div style="display: flex; flex-direction: column;">
+    <!-- Width/Height Inputs -->
+    <div style="display: flex;">
+        <label>Width: <input type="number" @bind="_width" style="width: 60px;"/></label>
+        <label>Height: <input type="number" @bind="_height" style="width: 60px;"/></label>
+    <!--   <button @onclick="ResizeCanvas">Resize</button> -->
+    </div>
+    
+    <!-- Fixed-size container for canvas + palette -->
+    <div style="display: flex; height: @(_height * Scale)px; overflow: hidden;">
+        <!-- Canvas -->
+        <canvas id="@CanvasId"
+            width="@_width" height="@_height"
+            style="border: 1px solid black;
+            image-rendering: pixelated;
+            width: @(_width * Scale)px;
+            height: @(_height * Scale)px;
+            touch-action: none;">
+        </canvas>
+
+        <!-- Palette -->
+        <div style="
+        display: flex;
+        flex-direction: column;
+        margin-left: 10px;
+        max-height: @(_height * Scale)px;
+        overflow-y: auto;
+        flex-shrink: 0;">
+            @foreach (var color in Image.AllColorHexCodes)
+            {
+                <button style="background-color: @color; width: 32px; height: 32px; margin-bottom: 4px;"
+                        @onclick="() => SetColor(color)">
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+<p>Click on the canvas to draw with the selected color.</p>
+
+@code {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    private string CanvasId => "canvas_" + GetHashCode(); // Unique ID
+
+    private int _width;
+    private int _height;
+
+    [Parameter] public IndexedImage Image { get; set; } = default!;
+    [Parameter] public int Scale { get; set; } = 8;
+    [Parameter] public bool ReadOnly { get; set; } = false;
+
+    private bool _needsCanvasInit = true;
+
+    protected override void OnParametersSet()
+    {
+        _width = Image.PixelIdGrid[0].Length;
+        _height = Image.PixelIdGrid.Length;
+        _needsCanvasInit = true; // delay JS work until canvas is actually rendered
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_needsCanvasInit)
+        {
+            await JS.InvokeVoidAsync("initCanvasDrawing", CanvasId, _width, _height, Scale);
+            await JS.InvokeVoidAsync("setCanvasImage", CanvasId, Image.PixelIdGrid, Image.IdToColorRaw);
+            _needsCanvasInit = false;
+        }
+    }
+
+    private async Task SetColor(string color)
+    {
+        await JS.InvokeVoidAsync("setDrawColor", color);
+    }
+
+    private async Task ResizeCanvas()
+    {
+        Image = IndexedImage.CreateBlank(_width, _height); // crushes the image (ok for now)
+        await JS.InvokeVoidAsync("initCanvasDrawing", CanvasId, _width, _height, Scale);
+        await JS.InvokeVoidAsync("setCanvasImage", CanvasId, Image.PixelIdGrid, Image.IdToColorRaw);
+    }
+
+
+}

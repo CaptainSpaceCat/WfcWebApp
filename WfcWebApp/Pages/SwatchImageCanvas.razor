@@ -1,0 +1,48 @@
+@using WfcWebApp.Utils
+@inject IJSRuntime JS
+
+
+<canvas @ref="canvasRef"
+	width="@Width" height="@Height"
+	style="width:@(300)px; height:@(300)px; image-rendering: pixelated; border: 1px solid #413c71; padding: 2px;">
+</canvas>
+<!-- #region  
+style="display: inline-block; border: 1px solid #413c71; padding: 2px; background: white;"-->
+
+@code {
+	[Parameter] public SwatchImage? Image { get; set; }
+
+	private ElementReference canvasRef;
+	private int Width => Image?.Width ?? 0;
+	private int Height => Image?.Height ?? 0;
+
+    public async Task Rerender() {
+        if (Image != null) {
+            await JS.InvokeVoidAsync("setCanvasSize", canvasRef, Image.Width, Image.Height);
+			await JS.InvokeVoidAsync("drawSwatchImage", canvasRef, ImageToByteArray(Image));
+		}
+    }
+
+    public void SetImage(SwatchImage image) {
+        Image = image;
+    }
+
+	private byte[] ImageToByteArray(SwatchImage image) {
+		int w = image.Width;
+		int h = image.Height;
+		byte[] data = new byte[w * h * 4];
+
+		var colors = image.RenderToImage();
+		int index = 0;
+		for (int y = 0; y < h; y++) {
+			for (int x = 0; x < w; x++) {
+				Color c = colors[x, y];
+				data[index++] = c.R;
+				data[index++] = c.G;
+				data[index++] = c.B;
+				data[index++] = c.A;
+			}
+		}
+		return data;
+	}
+}
