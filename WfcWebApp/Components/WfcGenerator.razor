@@ -36,7 +36,7 @@
 
     private void ReadyUp() {
         if (!Ready) {
-            wfcGenerator.Initialize(WfcConfig.Default, PaletteImage);
+            wfcGenerator.Initialize(Parameters.GetConfig(), PaletteImage);
             Ready = true;
         }
     }
@@ -73,9 +73,12 @@
         {
             result = wfcGenerator.Next();
             c++;
+            if (c % 10 == 0) {
+                await OnStepComplete.InvokeAsync(result);
+            }
         }
-        Console.WriteLine($"Backprop took {c} iters!");
+        //Console.WriteLine($"Backprop took {c} iters!");
         await OnStepComplete.InvokeAsync(result);
-        Console.WriteLine("render complete");
+        //Console.WriteLine("render complete");
     }
 }

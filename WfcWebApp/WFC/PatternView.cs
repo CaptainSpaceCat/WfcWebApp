@@ -14,7 +14,7 @@ public abstract class PatternView
         return _internalData[WrapR(Rotation + r)].Index;
     }
 
-    public int GetWeight(int r) {
+    public int GetWeight(int r = 0) {
         return _internalData[WrapR(r + Rotation)].Weight;
     }
 

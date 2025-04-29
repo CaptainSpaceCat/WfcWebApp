@@ -41,7 +41,12 @@ public class SparsePatternSet
     }
 
     public void UnionWith(SparsePatternSet other)
-    {
+    {   if (other.IsUnobserved) {
+            // union with another unobserved set is unobserved
+            Clear();
+            return;
+        }
+
         if (_unobserved) {
             foreach (var kvp in other.chunks)
                 chunks[kvp.Key] = kvp.Value;
@@ -59,6 +64,11 @@ public class SparsePatternSet
 
     public void IntersectWith(SparsePatternSet other)
     {
+        if (other.IsUnobserved) {
+            // if the other set is unobserved, the intersection doesn't change anything
+            return;
+        }
+
         var keysToRemove = new List<int>();
 
         foreach (var kvp in chunks)
@@ -96,6 +106,18 @@ public class SparsePatternSet
                 mask &= mask - 1; //clear lowest active bit
             }
         }
+    }
+
+    public void Observe() {
+        _unobserved = false;
+    }
+
+    public SparsePatternSet Copy()
+    {
+        var copy = new SparsePatternSet();
+        copy.chunks = new Dictionary<int, ulong>(chunks);
+        copy._unobserved = _unobserved;
+        return copy;
     }
 }
 

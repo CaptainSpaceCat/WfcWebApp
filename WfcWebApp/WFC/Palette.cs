@@ -67,8 +67,7 @@ public class Palette
                 }
             }
         }
-        EncodingTrie.PrintContents();
-        Console.WriteLine($"{EncodingTrie.CountUnique()} encoding trie unique patterns, {PatternIndexer.Count} in the indexer");
+        //EncodingTrie.PrintContents();
     }
 
     public IEnumerable<(int index, int weight)> AllUniqueWeightedPatterns() {
@@ -80,6 +79,7 @@ public class Palette
     public IEnumerable<int> MatchingPatterns(int patternIndex, int direction) {
         PatternView template = GetPatternFromIndex(patternIndex);
         foreach (int index in EncodingTrie.MatchingPatterns(template, direction)) {
+            if (RotationalSymmetry && GetPatternFromIndex(index).GetWeight() == 0) continue;
             yield return index;
         }
     }
@@ -93,7 +93,7 @@ public class Palette
 
     public int GetWeightFromIndex(int index) {
         PatternView p = GetPatternFromIndex(index);
-        return RotationalSymmetry ? p.TotalWeight : p.TotalWeight; //TODO fix this
+        return RotationalSymmetry ? p.TotalWeight : p.GetWeight();
     }
 
     public int GetPixel(int x, int y) {

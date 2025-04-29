@@ -5,14 +5,15 @@ namespace WfcWebApp.Utils
 
 public static class WaveVisualizer
 {
-    public static void RenderToImage(BoundedWave wave, Palette palette, SwatchImage image)
+
+    public static void RenderToImage(BoundedWave wave, Palette palette, SwatchImage image, int spacing = 1)
     {
         image.Clear();
         for (int y = 0; y < wave.Height; y++) {
             for (int x = 0; x < wave.Width; x++) {
                 SparsePatternSet patterns = wave.AccessPatternSet(x, y);
                 if (patterns.IsUnobserved) {
-                    image.AddColorToPosition(x, y, Color.Gray);
+                    //image.AddColorToPosition(x, y, Color.Gray);
                 }
                 //Console.WriteLine($"{(x,y)}: {patterns.Count} patterns");
                 foreach (int idx in patterns) {
@@ -20,7 +21,10 @@ public static class WaveVisualizer
                     for (int r = 0; r < palette.ConvSize; r++) {
                         for (int c = 0; c < palette.ConvSize; c++) {
                             Color color = pattern.GetColor(c, r);
-                            (int a, int b) = wave.WrapPosition(c+x, r+y);
+                            (int a, int b) = (c+x*spacing, r+y*spacing);
+                            if (spacing == 1) {
+                                (a, b) = wave.WrapPosition(c+x, r+y);
+                            }
                             image.AddColorToPosition(a, b, color);
                         }
                     }
@@ -60,6 +64,7 @@ public static class WaveVisualizer
             image.AddColorToPosition(x, y, rainbow);
         }
     }
+
 }
 
 

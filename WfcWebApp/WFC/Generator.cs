@@ -186,7 +186,7 @@ public class Generator
 		if (BackpropFringe.Count > 0 && (backpropHorizon > current_iteration++ || backpropHorizon < 0)) {
             if (GetLeastEntropyPosition(out int lx, out int ly, true, BackpropFringe)) {
                 BackpropFringe.Remove((lx, ly));
-                BackpropVisited.Add((lx, ly));
+                //BackpropVisited.Add((lx, ly));
 
                 bool wave_changed = false;
                 // for each cardinal direction
@@ -215,8 +215,10 @@ public class Generator
                         }
                     }
 
+                    // catch the edge case where there are no patterns that match
+                    // force the patternSet to be observed even if it's still empty
+                    patternsThatMatch.Observe(); 
 
-                    
                     // skip this next step for anywhere that:
                     // allows all patterns (no new info gained)
                     // allows too many patterns for the threshold (too long to compute)
@@ -225,15 +227,29 @@ public class Generator
 
                         // intersect the wave at the neighbor offset pos with the patterns that fit
                         int prev_entropy = GetEntropy(nx, ny);
+                        //SparsePatternSet temp = Wave.AccessPatternSet(nx, ny).Copy();
                         Wave.AccessPatternSet(nx, ny).IntersectWith(patternsThatMatch);
                         int new_entropy = GetEntropy(nx, ny);
-                        if (new_entropy > 0 && new_entropy != prev_entropy) {
+                        if (new_entropy == 0) {
+                            //TODO emit some kind of contradiction log
+                            /*
+                            Console.WriteLine($"!!!!Contradiction detected at ({nx}, {ny}) from direction {r}!");
+                            Console.WriteLine("Patterns that used to fit in the wave:");
+                            foreach (int patternIndex in temp) {
+                                Console.WriteLine($"  {Palette.GetPatternFromIndex(patternIndex)}");
+                            }
+                            Console.WriteLine("Patterns that matched during this step of backprop:");
+                            foreach (int matchingIndex in patternsThatMatch) {
+                                Console.WriteLine($"  {Palette.GetPatternFromIndex(matchingIndex)}");
+                            }
+                            */
+                        } else if (new_entropy != prev_entropy) {
                             // if something changed and we're not at a contradiction, continue propagation
                             BackpropFringe.Add((nx, ny));
                         }
                     } else {
                         // mark this tile as visited so we don't try to re-visit it, recalculate, and again find the mask to be too large
-                        BackpropVisited.Add((nx, ny));
+                        //BackpropVisited.Add((nx, ny));
                     }
                 }
                 
