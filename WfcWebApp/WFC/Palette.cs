@@ -14,13 +14,24 @@ public class Palette
 
     private IndexedImage PaletteImage = default!;
     private PatternEncodingTrie EncodingTrie = new();
+    
+    // Maps (pattern index, direction) -> matching pattern set
+    private Dictionary<(int, int), SparsePatternSet> PatternSetCache = new();
 
     public int Width => PaletteImage.Width;
     public int Height => PaletteImage.Height;
 
     private List<PatternView> PatternIndexer = new();
 
-    public int PatternCount => EncodingTrie.CountUnique();
+    private int _patternCount = -1;
+    public int PatternCount {
+        get {
+            if (_patternCount == -1) {
+                _patternCount = EncodingTrie.CountUnique();
+            }
+            return _patternCount;
+        }
+    }
 
     public void SetImage(IndexedImage image) {
         PaletteImage = image;
@@ -79,9 +90,21 @@ public class Palette
     public IEnumerable<int> MatchingPatterns(int patternIndex, int direction) {
         PatternView template = GetPatternFromIndex(patternIndex);
         foreach (int index in EncodingTrie.MatchingPatterns(template, direction)) {
-            if (RotationalSymmetry && GetPatternFromIndex(index).GetWeight() == 0) continue;
+            PatternView pattern = GetPatternFromIndex(index);
+            if (!RotationalSymmetry && pattern.GetWeight() == 0) continue;
             yield return index;
         }
+    }
+
+    public SparsePatternSet MatchingPatternSet(int patternIndex, int direction) {
+        if (!PatternSetCache.ContainsKey((patternIndex, direction))) {
+            SparsePatternSet newSet = new();
+            foreach (int index in MatchingPatterns(patternIndex, direction)) {
+                newSet.Add(index);
+            }
+            PatternSetCache[(patternIndex, direction)] = newSet;
+        }
+        return PatternSetCache[(patternIndex, direction)];
     }
 
     public PatternView GetPatternFromIndex(int index) {
@@ -93,7 +116,7 @@ public class Palette
 
     public int GetWeightFromIndex(int index) {
         PatternView p = GetPatternFromIndex(index);
-        return RotationalSymmetry ? p.TotalWeight : p.GetWeight();
+        return RotationalSymmetry ? p.TotalWeight : p.GetWeight(0);
     }
 
     public int GetPixel(int x, int y) {

@@ -55,7 +55,7 @@ public class PatternEncodingTrie
     // Iterates through every pattern that would fit on top of the template with offset 1 in the specified direction (0 is up, 1 is right, ect)
     // if a match rotation is specified, will only return patterns that were sampled with the same rotation
     public IEnumerable<int> MatchingPatterns(PatternView template, int direction) {
-        direction = -direction + 2;
+        direction = ((-direction + 2) % 4 + 4) % 4;
         TrieNode? curr = root;
         foreach (int tileId in template.ValuesSkippingFirstRow(direction)) {
             curr = curr.GetChild(tileId);

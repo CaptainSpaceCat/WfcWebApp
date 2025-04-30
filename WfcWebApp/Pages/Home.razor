@@ -23,8 +23,18 @@
 	<SwatchImageCanvas @ref="swatchCanvasRef" />
 	<SwatchImageCanvas @ref="entropyCanvasRef" />
 </div>
+<button @onclick="DumpTimers">Dump Timers</button>
 
 @code {
+// UI TODOS:
+/*
+get rid of the editable canvas thing
+replace with several samples the user can select, like the red shape, redpath, flowers, stuff from the original github
+or upload your own!
+that way people can play with the samples, and if theyre more serious, they can upload their own pixel art
+*/
+
+
     private WfcGenerator generatorRef;
     private WfcParameters parametersRef;
     private IndexedImage userInputImage = IndexedImage.CreateBlank(32, 32);
@@ -33,6 +43,11 @@
         userInputImage = image;
         outputImage = null;
         entropyImage = null;
+        generatorRef.Reset();
+    }
+
+    private void DumpTimers() {
+        StopwatchManager.Dump();
     }
 
     private SwatchImage? outputImage = null;
@@ -42,7 +57,7 @@
 
     private int spacing = 1;
     private async Task OnGenerationStep(Generator.StepResult result) {
-        //Console.WriteLine($"Just finished {result} step.");
+        Console.WriteLine($"Just finished {result} step.");
         if (outputImage == null) {
             WfcConfig config = generatorRef.Parameters.GetConfig();
             outputImage = new(config.OutputWidth*spacing, config.OutputHeight*spacing);

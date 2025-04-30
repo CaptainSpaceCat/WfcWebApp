@@ -8,8 +8,8 @@ public class Generator
     public BoundedWave Wave = new BoundedWave();
     public Palette Palette = new();
     private int backpropHorizon = -1; // Max number of backprop iterations before moving on
-    private int backpropMaxDistance = -1; // backprop won't continue past this radius around each collapse position
-    private int backpropSizeThreshold = 100; //maximum number of unique patterns we're willing to analyze during backprop
+    //private int backpropMaxDistance = -1; // backprop won't continue past this radius around each collapse position
+    private int backpropSizeThreshold = 50; //maximum number of unique patterns we're willing to analyze during backprop
     // setting this value to 10 would force the wave to stay fully uncollapsed at a position if there were 11 or more possible patterns there
     // tuning this properly can vastly speed up the algorithm without losing much accuracy
 
@@ -105,6 +105,8 @@ public class Generator
     private HashSet<(int, int)> BackpropVisited = new();
 
     private void CollapseWaveAt(int x, int y) {
+        using var watch = new ScopedStopwatch();
+
         IndexKeyCounter.Clear();
         //ask the wave to wrap these coords, then use them here as keys to the fringe
         (x, y) = Wave.WrapPosition(x, y);
@@ -125,12 +127,29 @@ public class Generator
         //Console.WriteLine(Palette.GetPatternFromIndex(choiceIndex));
         Wave.CollapseWave(x, y, choiceIndex);
         BackpropFringe.Add((x, y));
+        minEntropyMarker.Reset();
+        minUncollapsedEntropyMarker.Reset();
+        EntropyCache.Remove((x, y));
     }
 
     // Gets the LEP from the wave based on the palette's pattern indexer
     private bool GetLeastEntropyPosition(out int minX, out int minY,
     bool includeCollapsed = false, IEnumerable<(int x, int y)>? positionFilter = null)
     {
+        using var watch = new ScopedStopwatch();
+
+        if (includeCollapsed) {
+            if (minEntropyMarker.Ready) {
+                minX = minEntropyMarker.X;
+                minY = minEntropyMarker.Y;
+                return true;
+            }
+        } else if (minUncollapsedEntropyMarker.Ready) {
+            minX = minUncollapsedEntropyMarker.X;
+            minY = minUncollapsedEntropyMarker.Y;
+            return true;
+        }
+            
         minX = minY = 0;
         int minEntropy = int.MaxValue;
         PositionKeyCounter.Clear();
@@ -160,17 +179,58 @@ public class Generator
             return true;
         }
         return false;
+
     }
 
+    private struct EntropyMarker {
+        public int X, Y;
+        public int Entropy;
+
+        public EntropyMarker() {
+            Reset();
+        }
+
+        public void Reset() {
+            X = Y = -1;
+            Entropy = int.MaxValue;
+        }
+
+        public bool Ready => X >= 0 && Y >= 0;
+    }
+
+    private EntropyMarker minUncollapsedEntropyMarker = new();
+    private EntropyMarker minEntropyMarker = new();
+
+    private Dictionary<(int, int), int> EntropyCache = new();
     public int GetEntropy(int x, int y) {
+        if (EntropyCache.TryGetValue((x, y), out int entropy)) {
+            return entropy;
+        }
+        
         SparsePatternSet patternSet = Wave.AccessPatternSet(x, y);
         if (patternSet.IsUnobserved) {
             return int.MaxValue;
+        } else if (patternSet.IsContradiction) {
+            return 0;
         }
-        int entropy = 0;
+
+        // this is the slowdown we want to avoid whenever possible
+        entropy = 0;
         foreach (int patternIndex in patternSet) {
-            //TODO might have to streamline this by normalizing weight and using bit operations
             entropy += Palette.GetWeightFromIndex(patternIndex);
+        }
+        EntropyCache[(x, y)] = entropy;
+        if (entropy > 0) {
+            if (entropy < minEntropyMarker.Entropy) {
+                minEntropyMarker.X = x;
+                minEntropyMarker.Y = y;
+                minEntropyMarker.Entropy = entropy;
+            }
+            if (!patternSet.IsCollapsed && entropy < minUncollapsedEntropyMarker.Entropy) {
+                minUncollapsedEntropyMarker.X = x;
+                minUncollapsedEntropyMarker.Y = y;
+                minUncollapsedEntropyMarker.Entropy = entropy;
+            }
         }
         return entropy;
     }
@@ -181,18 +241,17 @@ public class Generator
     // Returns true if backprop should continue
     // Returns false if convergence was reached or horizon was exceeded
     private bool SingleBackpropStep() {
+        
+
         //Console.WriteLine($"Performing backprop iteration {current_iteration} with fringe of size {BackpropFringe.Count}");
 		                                                                    // if it's -1, ignore the horizon
 		if (BackpropFringe.Count > 0 && (backpropHorizon > current_iteration++ || backpropHorizon < 0)) {
             if (GetLeastEntropyPosition(out int lx, out int ly, true, BackpropFringe)) {
+                using var watch = new ScopedStopwatch();
                 BackpropFringe.Remove((lx, ly));
-                //BackpropVisited.Add((lx, ly));
 
-                bool wave_changed = false;
                 // for each cardinal direction
                 for (int r = 0; r < 4; r++) {
-                    SparsePatternSet patternsThatMatch = new();
-
                     // Calculate neighbor offset position
                     (int nx, int ny) = r switch {
                         1 => (lx + 1, ly),
@@ -200,59 +259,53 @@ public class Generator
                         3 => (lx - 1, ly),
                         _ => (lx, ly - 1),
                     };
-                    if (BackpropVisited.Contains((nx, ny))) {
-                        // skip this neighbor if we've already visited it during this backprop cycle
-                        continue;
-                    }
 
-                    // For each pattern that fits at this position in the wave
-                    foreach (int patternIndex in Wave.AllPatternsAtPosition(lx, ly)) {
-                        // for each pattern that overlaps (lx, ly) in direction r
-                        //Console.WriteLine($"Direction {r}, Template pattern: {Palette.GetPatternFromIndex(patternIndex)}");
-                        foreach (int matchingIndex in Palette.MatchingPatterns(patternIndex, r)) {
-                            patternsThatMatch.Add(matchingIndex);
-                            //Console.WriteLine($"Match: {Palette.GetPatternFromIndex(matchingIndex)}");
+                    SparsePatternSet patternsThatMatch = new();
+
+                    using (var watch2 = new ScopedStopwatch("pattern matching")) {
+                        // For each pattern that fits at this position in the wave
+                        foreach (int patternIndex in Wave.AllPatternsAtPosition(lx, ly)) {
+                            // for each pattern that overlaps (lx, ly) in direction r
+                            //Console.WriteLine($"Direction {r}, Template pattern: {Palette.GetPatternFromIndex(patternIndex)}");
+                            SparsePatternSet subset = Palette.MatchingPatternSet(patternIndex, r);
+                            patternsThatMatch.UnionWith(subset);
                         }
-                    }
 
-                    // catch the edge case where there are no patterns that match
-                    // force the patternSet to be observed even if it's still empty
-                    patternsThatMatch.Observe(); 
+                        // catch the edge case where there are no patterns that match
+                        // force the patternSet to be observed even if it's still empty
+                        patternsThatMatch.Observe(); 
+                    }
 
                     // skip this next step for anywhere that:
                     // allows all patterns (no new info gained)
                     // allows too many patterns for the threshold (too long to compute)
-                    if ((patternsThatMatch.Count < Palette.PatternCount)
-                        && (backpropSizeThreshold == -1 || patternsThatMatch.Count <= backpropSizeThreshold)) {
+                    int n_matches = patternsThatMatch.Count;
+                    if ((n_matches < Palette.PatternCount)
+                        && (backpropSizeThreshold == -1 || n_matches <= backpropSizeThreshold)) {
 
                         // intersect the wave at the neighbor offset pos with the patterns that fit
-                        int prev_entropy = GetEntropy(nx, ny);
+                        
                         //SparsePatternSet temp = Wave.AccessPatternSet(nx, ny).Copy();
-                        Wave.AccessPatternSet(nx, ny).IntersectWith(patternsThatMatch);
-                        int new_entropy = GetEntropy(nx, ny);
-                        if (new_entropy == 0) {
-                            //TODO emit some kind of contradiction log
-                            /*
-                            Console.WriteLine($"!!!!Contradiction detected at ({nx}, {ny}) from direction {r}!");
-                            Console.WriteLine("Patterns that used to fit in the wave:");
-                            foreach (int patternIndex in temp) {
-                                Console.WriteLine($"  {Palette.GetPatternFromIndex(patternIndex)}");
-                            }
-                            Console.WriteLine("Patterns that matched during this step of backprop:");
-                            foreach (int matchingIndex in patternsThatMatch) {
-                                Console.WriteLine($"  {Palette.GetPatternFromIndex(matchingIndex)}");
-                            }
-                            */
-                        } else if (new_entropy != prev_entropy) {
-                            // if something changed and we're not at a contradiction, continue propagation
-                            BackpropFringe.Add((nx, ny));
+                        int prev_entropy = 0, new_entropy = 0;
+                        using (var watch3 = new ScopedStopwatch("intersection")) {
+                            prev_entropy = GetEntropy(nx, ny);
+                            Wave.AccessPatternSet(nx, ny).IntersectWith(patternsThatMatch);
+                            EntropyCache.Remove((nx, ny));
+                            new_entropy = GetEntropy(nx, ny);
+                            minEntropyMarker.Reset();
+                            minUncollapsedEntropyMarker.Reset();
                         }
-                    } else {
-                        // mark this tile as visited so we don't try to re-visit it, recalculate, and again find the mask to be too large
-                        //BackpropVisited.Add((nx, ny));
+
+                        if (new_entropy != prev_entropy) {
+                            if (new_entropy == 0) {
+                                //TODO self-healing
+                            } else {
+                                // if something changed and we're not at a contradiction, continue propagation
+                                BackpropFringe.Add((nx, ny));
+                            }
+                        }
                     }
                 }
-                
                 return true;
             }
             // if we fail to find LEP, it means nothing still in the fringe is able to be collapsed
