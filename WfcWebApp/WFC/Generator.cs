@@ -27,6 +27,7 @@ public class Generator
 
     public void Reset() {
         PreviousStepResult = StepResult.Initialize;
+        EntropyTracker.Clear();
         _initialized = false;
     }
 
@@ -58,15 +59,17 @@ public class Generator
                 if (!_initialized) {
                     throw new Exception("Generator called before initialization.");
                 }
-                return SelectStepResult(StepResult.BackpropConvergence);
+                // randomly collapse first pattern
+                CollapseWaveAt(RandomUtils.Random.Next(Wave.Width), RandomUtils.Random.Next(Wave.Height));
+                return SelectStepResult(StepResult.BackpropStep);
 
             case StepResult.BackpropConvergence:
                 // Backprop just converged (or wave was just initialized)
                 // Find least entropy position in wave, and collapse it
-                if (GetLeastEntropyPosition(out int lx, out int ly)) {
+                if (EntropyTracker.TryGetGlobalLEP(out (int X, int Y) pos)) {
                     // collapse the wave at this position
-                    Console.WriteLine($"Collapsing wave at {(lx, ly)}");
-                    CollapseWaveAt(lx, ly);
+                    Console.WriteLine($"Collapsing wave at {pos}");
+                    CollapseWaveAt(pos.X, pos.Y);
                     
                     return SelectStepResult(StepResult.CollapseStep);
                 }
@@ -81,8 +84,7 @@ public class Generator
                 bool continue_backprop = SingleBackpropStep();
                 if (!continue_backprop) {
                     // backprop has converged
-                    BackpropFringe.Clear();
-                    BackpropVisited.Clear();
+                    EntropyTracker.ClearFringe();
                     current_iteration = 0;
                     return SelectStepResult(StepResult.BackpropConvergence);
                 }
@@ -101,12 +103,9 @@ public class Generator
     private RandomUtils.WeightedKeyCounter<(int, int)> PositionKeyCounter = new();
     private RandomUtils.WeightedKeyCounter<int> IndexKeyCounter = new();
     private List<(int, int)> PositionCandidates = new();
-    private HashSet<(int, int)> BackpropFringe = new();
-    private HashSet<(int, int)> BackpropVisited = new();
+    private EntropyTracker EntropyTracker = new();
 
     private void CollapseWaveAt(int x, int y) {
-        using var watch = new ScopedStopwatch();
-
         IndexKeyCounter.Clear();
         //ask the wave to wrap these coords, then use them here as keys to the fringe
         (x, y) = Wave.WrapPosition(x, y);
@@ -120,65 +119,16 @@ public class Generator
                 IndexKeyCounter.AddWeightedKey(patternIndex, Palette.GetWeightFromIndex(patternIndex));
             }
         } else {
-            throw new InvalidOperationException($"Failed to collapse wave at {x}, {y} with entropy {GetEntropy(x, y)}");
+            throw new InvalidOperationException(
+                $"Failed to collapse wave at {x}, {y} with entropy {GetEntropy(x, y)} and count {Wave.AccessPatternSet(x, y).Count}");
         }
         
         int choiceIndex = IndexKeyCounter.Sample();
         //Console.WriteLine(Palette.GetPatternFromIndex(choiceIndex));
         Wave.CollapseWave(x, y, choiceIndex);
-        BackpropFringe.Add((x, y));
-        minEntropyMarker.Reset();
-        minUncollapsedEntropyMarker.Reset();
-        EntropyCache.Remove((x, y));
-    }
 
-    // Gets the LEP from the wave based on the palette's pattern indexer
-    private bool GetLeastEntropyPosition(out int minX, out int minY,
-    bool includeCollapsed = false, IEnumerable<(int x, int y)>? positionFilter = null)
-    {
-        using var watch = new ScopedStopwatch();
-
-        if (includeCollapsed) {
-            if (minEntropyMarker.Ready) {
-                minX = minEntropyMarker.X;
-                minY = minEntropyMarker.Y;
-                return true;
-            }
-        } else if (minUncollapsedEntropyMarker.Ready) {
-            minX = minUncollapsedEntropyMarker.X;
-            minY = minUncollapsedEntropyMarker.Y;
-            return true;
-        }
-            
-        minX = minY = 0;
-        int minEntropy = int.MaxValue;
-        PositionKeyCounter.Clear();
-        PositionCandidates.Clear();
-
-        if (positionFilter == null) {
-            positionFilter = AllGridPositions(Wave.Width, Wave.Height);
-        }
-
-        foreach ((int x, int y) in positionFilter) {
-            SparsePatternSet patternSet = Wave.AccessPatternSet(x, y);
-            if (!patternSet.IsContradiction && (!patternSet.IsCollapsed || includeCollapsed)) {
-                // we need to calculate entropy
-                int entropy = GetEntropy(x, y);
-                if (entropy <= minEntropy) {
-                    if (entropy < minEntropy) {
-                        minEntropy = entropy;
-                        PositionCandidates.Clear();
-                    }
-                    PositionCandidates.Add((x, y));
-                }
-            }
-        }
-        
-        if (PositionCandidates.Count > 0) {
-            (minX, minY) = RandomUtils.Choice(PositionCandidates);
-            return true;
-        }
-        return false;
+        EntropyTracker.AddOrUpdate((x, y), GetEntropy(x, y), 1);
+        EntropyTracker.AddToFringe((x, y));
 
     }
 
@@ -198,77 +148,72 @@ public class Generator
         public bool Ready => X >= 0 && Y >= 0;
     }
 
-    private EntropyMarker minUncollapsedEntropyMarker = new();
-    private EntropyMarker minEntropyMarker = new();
-
-    private Dictionary<(int, int), int> EntropyCache = new();
-    public int GetEntropy(int x, int y) {
-        if (EntropyCache.TryGetValue((x, y), out int entropy)) {
-            return entropy;
-        }
-        
-        SparsePatternSet patternSet = Wave.AccessPatternSet(x, y);
-        if (patternSet.IsUnobserved) {
-            return int.MaxValue;
-        } else if (patternSet.IsContradiction) {
-            return 0;
-        }
-
-        // this is the slowdown we want to avoid whenever possible
-        entropy = 0;
+    private int RecalculateEntropy(SparsePatternSet patternSet) {
+        int entropy = 0;
         foreach (int patternIndex in patternSet) {
             entropy += Palette.GetWeightFromIndex(patternIndex);
-        }
-        EntropyCache[(x, y)] = entropy;
-        if (entropy > 0) {
-            if (entropy < minEntropyMarker.Entropy) {
-                minEntropyMarker.X = x;
-                minEntropyMarker.Y = y;
-                minEntropyMarker.Entropy = entropy;
-            }
-            if (!patternSet.IsCollapsed && entropy < minUncollapsedEntropyMarker.Entropy) {
-                minUncollapsedEntropyMarker.X = x;
-                minUncollapsedEntropyMarker.Y = y;
-                minUncollapsedEntropyMarker.Entropy = entropy;
-            }
         }
         return entropy;
     }
 
+    public int GetEntropy(int x, int y) {
+        var pos = Wave.WrapPosition(x, y);
+        if (EntropyTracker.TryGetEntropy(pos, out int cachedEntropy)) {
+            return cachedEntropy;
+        }
+        
+        SparsePatternSet patternSet = Wave.AccessPatternSet(x, y);
+        int entropy;
+
+        if (patternSet.IsUnobserved) {
+            entropy = int.MaxValue;
+        } else if (patternSet.IsContradiction) {
+            entropy = 0;
+        } else {
+            entropy = RecalculateEntropy(patternSet);
+        }
+
+        // Count is the number of valid patterns left (used for collapsed check)
+        int count = patternSet.Count;
+
+        // Store in tracker
+        EntropyTracker.AddOrUpdate(pos, entropy, count);
+
+        return entropy;
+    }
+
     
+    private static readonly (int dx, int dy)[] DirectionOffsets = {
+        (0, -1), (1, 0), (0, 1), (-1, 0)
+    };
+
+    private SparsePatternSet patternsThatMatch = new();
     private int current_iteration = 0;
     // Performs a single step of backprop
     // Returns true if backprop should continue
     // Returns false if convergence was reached or horizon was exceeded
     private bool SingleBackpropStep() {
-        
-
         //Console.WriteLine($"Performing backprop iteration {current_iteration} with fringe of size {BackpropFringe.Count}");
-		                                                                    // if it's -1, ignore the horizon
-		if (BackpropFringe.Count > 0 && (backpropHorizon > current_iteration++ || backpropHorizon < 0)) {
-            if (GetLeastEntropyPosition(out int lx, out int ly, true, BackpropFringe)) {
+		if (EntropyTracker.FringeCount > 0 &&
+        (backpropHorizon > current_iteration++ || backpropHorizon < 0)) { // if it's -1, ignore the horizon
+            if (EntropyTracker.TryGetFringeLEP(out (int, int) pos)) {
                 using var watch = new ScopedStopwatch();
-                BackpropFringe.Remove((lx, ly));
+                (int lx, int ly) = pos;
+                EntropyTracker.RemoveFromFringe(pos);
 
                 // for each cardinal direction
                 for (int r = 0; r < 4; r++) {
                     // Calculate neighbor offset position
-                    (int nx, int ny) = r switch {
-                        1 => (lx + 1, ly),
-                        2 => (lx, ly + 1),
-                        3 => (lx - 1, ly),
-                        _ => (lx, ly - 1),
-                    };
+                    (int nx, int ny) = Wave.WrapPosition(lx + DirectionOffsets[r].dx, ly + DirectionOffsets[r].dy);
 
-                    SparsePatternSet patternsThatMatch = new();
+                    patternsThatMatch.Clear();
 
                     using (var watch2 = new ScopedStopwatch("pattern matching")) {
                         // For each pattern that fits at this position in the wave
                         foreach (int patternIndex in Wave.AllPatternsAtPosition(lx, ly)) {
                             // for each pattern that overlaps (lx, ly) in direction r
                             //Console.WriteLine($"Direction {r}, Template pattern: {Palette.GetPatternFromIndex(patternIndex)}");
-                            SparsePatternSet subset = Palette.MatchingPatternSet(patternIndex, r);
-                            patternsThatMatch.UnionWith(subset);
+                            patternsThatMatch.UnionWith(Palette.MatchingPatternSet(patternIndex, r));
                         }
 
                         // catch the edge case where there are no patterns that match
@@ -284,24 +229,17 @@ public class Generator
                         && (backpropSizeThreshold == -1 || n_matches <= backpropSizeThreshold)) {
 
                         // intersect the wave at the neighbor offset pos with the patterns that fit
-                        
-                        //SparsePatternSet temp = Wave.AccessPatternSet(nx, ny).Copy();
-                        int prev_entropy = 0, new_entropy = 0;
                         using (var watch3 = new ScopedStopwatch("intersection")) {
-                            prev_entropy = GetEntropy(nx, ny);
-                            Wave.AccessPatternSet(nx, ny).IntersectWith(patternsThatMatch);
-                            EntropyCache.Remove((nx, ny));
-                            new_entropy = GetEntropy(nx, ny);
-                            minEntropyMarker.Reset();
-                            minUncollapsedEntropyMarker.Reset();
-                        }
-
-                        if (new_entropy != prev_entropy) {
-                            if (new_entropy == 0) {
-                                //TODO self-healing
-                            } else {
-                                // if something changed and we're not at a contradiction, continue propagation
-                                BackpropFringe.Add((nx, ny));
+                            SparsePatternSet neighborPatternSet = Wave.AccessPatternSet(nx, ny);
+                            int prev_entropy = GetEntropy(nx, ny);
+                            if (neighborPatternSet.IntersectWith(patternsThatMatch)) {
+                                //if something changed during intersection, recompute entropy
+                                int new_entropy = RecalculateEntropy(neighborPatternSet);
+                                int count = neighborPatternSet.Count;
+                                EntropyTracker.AddOrUpdate((nx, ny), new_entropy, count);
+                                // and add to fringe
+                                if (new_entropy > 0)
+                                    EntropyTracker.AddToFringe((nx, ny));
                             }
                         }
                     }

@@ -40,42 +40,59 @@ public class SparsePatternSet
         return chunks.TryGetValue(chunkIndex, out ulong chunk) && ((chunk & (1UL << bitIndex)) != 0);
     }
 
-    public void UnionWith(SparsePatternSet other)
+    public bool UnionWith(SparsePatternSet other)
     {   if (other.IsUnobserved) {
             // union with another unobserved set is unobserved
+            bool was_unobserved = _unobserved;
             Clear();
-            return;
+            return !was_unobserved;
         }
 
+        bool changed = false;
         if (_unobserved) {
             foreach (var kvp in other.chunks)
                 chunks[kvp.Key] = kvp.Value;
+                _unobserved = false;
+                return true;
         } else {
             foreach (var kvp in other.chunks)
             {
-                if (chunks.ContainsKey(kvp.Key))
+                if (chunks.ContainsKey(kvp.Key)) {
+                    ulong prev_chunk = chunks[kvp.Key];
                     chunks[kvp.Key] |= kvp.Value;
-                else
+                    changed |= prev_chunk != chunks[kvp.Key];
+                } else {
                     chunks[kvp.Key] = kvp.Value;
+                    changed = true;
+                }
             }
         }
-        _unobserved = false;
+        return changed;
     }
 
-    public void IntersectWith(SparsePatternSet other)
+    public bool IntersectWith(SparsePatternSet other)
     {
         if (other.IsUnobserved) {
             // if the other set is unobserved, the intersection doesn't change anything
-            return;
+            return false;
+        } else if (_unobserved) {
+            foreach (var kvp in other.chunks)
+                chunks[kvp.Key] = kvp.Value;
+            
+            _unobserved = false;
+            return true;
         }
 
         var keysToRemove = new List<int>();
 
+        bool changed = false;
         foreach (var kvp in chunks)
         {
             if (other.chunks.TryGetValue(kvp.Key, out ulong otherChunk))
             {
+                ulong prev_chunk = chunks[kvp.Key];
                 chunks[kvp.Key] &= otherChunk;
+                changed |= prev_chunk != chunks[kvp.Key];
 
                 if (chunks[kvp.Key] == 0)
                     keysToRemove.Add(kvp.Key);
@@ -83,18 +100,14 @@ public class SparsePatternSet
             else
             {
                 keysToRemove.Add(kvp.Key);
+                changed = true;
             }
         }
 
         foreach (int key in keysToRemove)
             chunks.Remove(key);
         
-        if (_unobserved) {
-            foreach (var kvp in other.chunks)
-                chunks[kvp.Key] = kvp.Value;
-        }
-
-        _unobserved = false;
+        return changed;
     }
 
     public IEnumerator<int> GetEnumerator() {
