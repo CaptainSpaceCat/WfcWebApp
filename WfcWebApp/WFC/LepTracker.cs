@@ -9,10 +9,10 @@ public class LepTracker {
 	private readonly Dictionary<(int, int), Entry> entryMap = new();
 
 
-	public void Add((int, int) pos, float entropy) {
-		var entry = new Entry(pos, entropy);
+	public void Add((int, int) pos, float entropy, int count) {
+		var entry = new Entry(pos, entropy, count);
 		if (entryMap.ContainsKey(pos)) {
-			UpdateEntropy(pos, entropy); // Replace if already exists
+			UpdateEntropy(pos, entropy, count); // Replace if already exists
 			return;
 		}
 
@@ -20,26 +20,21 @@ public class LepTracker {
 		entryMap[pos] = entry;
 	}
 
-	public void UpdateEntropy((int, int) pos, float newEntropy) {
+	public void UpdateEntropy((int, int) pos, float newEntropy, int count) {
 		if (!entryMap.TryGetValue(pos, out var oldEntry)) return;
 
 		entries.Remove(oldEntry);
 		entryMap.Remove(pos);
 
-		var newEntry = new Entry(pos, newEntropy);
+		var newEntry = new Entry(pos, newEntropy, count);
 		entries.Add(newEntry);
 		entryMap[pos] = newEntry;
 	}
 
-	public bool TryGetLEP(out (int X, int Y) pos) {
+	public bool TryGetLEP(bool includeCollapsed, out (int X, int Y) pos) {
 		while (entries.Count > 0) {
 			var entry = entries.Min;
             
-			if (entry.entropy <= 1) {
-				entries.Remove(entry);
-				entryMap.Remove(entry.pos);
-				continue;
-			}
 			pos = entry.pos;
 			return true;
 		}
@@ -47,7 +42,7 @@ public class LepTracker {
 		return false;
 	}
 
-	private record struct Entry((int X, int Y) pos, float entropy);
+	private record struct Entry((int X, int Y) pos, float entropy, int count);
 
 	private class EntryComparer : IComparer<Entry> {
 		public static readonly EntryComparer Instance = new();
