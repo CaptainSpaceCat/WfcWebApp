@@ -135,6 +135,7 @@ code {
     border: 2px solid transparent;
     cursor: pointer;
     transition: border 0.2s ease;
+    image-rendering: pixelated;
 }
 
 .pattern-thumb.selected {
@@ -152,7 +153,10 @@ code {
 }
 
 .preview-canvas {
+    width: 150px;
+    height: 150px;
     max-width: 100%;
     max-height: 400px;
     border: 1px solid #ccc;
+    image-rendering: pixelated;
 }
