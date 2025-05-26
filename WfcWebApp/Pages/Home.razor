@@ -1,6 +1,7 @@
 ﻿@page "/"
 @using WfcWebApp.Wfc
 @using WfcWebApp.Utils
+@using Microsoft.AspNetCore.Components.Forms
 
 <PageTitle>Texture Generator</PageTitle>
 
@@ -10,8 +11,29 @@
     Upload a suitable input texture below, or draw one yourself!
 </p>
 
-<Upload OnImageChanged="@HandleImageChanged"/>
-<DrawableCanvas Image="@userInputImage"/>
+<h3>Select a Pattern</h3>
+
+<div class="pattern-picker">
+	@foreach (var pattern in SamplePatterns)
+	{
+		<img src="@pattern.ImagePath"
+		     title="@pattern.Name"
+		     class="pattern-thumb @(SelectedPattern?.ImagePath == pattern.ImagePath ? "selected" : "")"
+		     @onclick="() => SelectPattern(pattern)" />
+	}
+
+	<label class="pattern-thumb upload-thumb">
+		<span>+</span>
+		<InputFile OnChange="HandleUpload" style="display:none" />
+	</label>
+</div>
+
+@if (SelectedImageDataUrl is not null)
+{
+	<h4>Selected Pattern:</h4>
+	<img src="@SelectedImageDataUrl" class="preview-canvas" />
+}
+
 <WfcParameters @ref="parametersRef"/>
 <WfcGenerator
     @ref="generatorRef"
@@ -33,7 +55,37 @@ replace with several samples the user can select, like the red shape, redpath, f
 or upload your own!
 that way people can play with the samples, and if theyre more serious, they can upload their own pixel art
 */
+    private class Pattern
+	{
+		public string Name { get; set; }
+		public string ImagePath { get; set; }
+	}
 
+	private List<Pattern> SamplePatterns = new()
+	{
+		new Pattern { Name = "Angular", ImagePath = "sample-patterns/angular.png" },
+		new Pattern { Name = "Lake", ImagePath = "sample-patterns/lake.png" },
+		new Pattern { Name = "Village", ImagePath = "sample-patterns/village2.png" }
+	};
+
+	private Pattern? SelectedPattern;
+	private string? SelectedImageDataUrl;
+
+	private void SelectPattern(Pattern pattern)
+	{
+		SelectedPattern = pattern;
+		SelectedImageDataUrl = pattern.ImagePath;
+	}
+
+	private async Task HandleUpload(InputFileChangeEventArgs e)
+	{
+		var file = e.File;
+		var buffer = new byte[file.Size];
+		await file.OpenReadStream().ReadAsync(buffer);
+		var base64 = Convert.ToBase64String(buffer);
+		SelectedImageDataUrl = $"data:{file.ContentType};base64,{base64}";
+		SelectedPattern = null;
+	}
 
     private WfcGenerator generatorRef;
     private WfcParameters parametersRef;
